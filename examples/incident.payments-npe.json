@@ -1,0 +1,12 @@
+{
+  "id": "coralogix:logs:4c9a1f",
+  "fingerprint": "4c9a1f2d8e",
+  "source": { "kind": "logs", "system": "coralogix" },
+  "severity": "error",
+  "title": "NullPointerException in PaymentService.processPayment",
+  "description": "Payment flow failing after payments-api v2.8.4 deploy",
+  "first_seen": "2026-09-19T10:32:00Z",
+  "last_seen": "2026-09-19T10:41:00Z",
+  "occurrences": 1842,
+  "raw": { "service": "payments-api" }
+}
