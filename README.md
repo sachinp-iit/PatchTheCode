@@ -2,6 +2,10 @@
 
 > **AI Production Engineer for detecting, investigating, and fixing production issues.**
 
+<p align="center">
+  <img src="assets/patchthecode-logo.svg" alt="PatchTheCode logo" width="200">
+</p>
+
 PatchTheCode connects your existing **observability systems, code repositories, CI/CD, and LLMs through MCP**. It detects production exceptions and warnings, investigates the evidence, identifies the affected service and repository, traces the issue to the relevant code, generates a fix, validates it, and opens a pull request for human review.
 
 **Your infrastructure. Your repositories. Your models. One production engineering agent.**
@@ -442,6 +446,16 @@ PatchTheCode is intended to support configurable model providers rather than req
 
 Detailed installation and execution instructions will be added alongside the first stable runnable release.
 
+### Development (working skeleton)
+
+A runnable skeleton is in place for the vertical slice. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the layout and the "Where to build next" list.
+
+```bash
+pip install -e ".[dev]"
+pytest                      # unit + integration tests
+patchthecode demo           # run the pipeline on a synthetic incident
+```
+
 ---
 
 ## Repository Structure
@@ -450,19 +464,32 @@ The project is organized around the production debugging workflow:
 
 ```text
 patchthecode/
-├── agent/
-├── investigation/
-├── evidence/
-├── repository/
-├── remediation/
-├── validation/
-├── integrations/
-├── mcp/
-├── tests/
-└── ...
+├── agent/             agent core (orchestrator, planner)
+├── detection/         normalization, fingerprinting, incident build-up
+├── investigation/     evidence collection
+├── repository/        incident -> repo/file resolution
+├── remediation/       fix proposal
+├── validation/        validate a candidate fix
+├── mcp/               MCP client wrapper, redaction, connector registry
+├── integrations/      vendor adapters (coralogix/, github/, ...)
+├── llm/               LiteLLM gateway + prompt templates
+├── notifications/     Slack / Teams / log notifiers
+├── storage/           SQLite store (dedup + investigation history)
+├── domain/            shared pydantic models
+├── cli.py             entry point (demo / replay / inspect-mcp)
+├── config.py          settings (.env based)
+├── docs/
+│   └── ARCHITECTURE.md
+├── config/
+│   └── mcp.example.json
+├── examples/
+│   └── incident.*.json
+└── tests/
+    ├── unit/
+    └── integration/
 ```
 
-The exact structure may evolve during early development.
+The full pipeline and the current vertical-slice scope are described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
