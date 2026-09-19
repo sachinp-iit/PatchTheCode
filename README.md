@@ -1,608 +1,518 @@
-# MCP Server
+# PatchTheCode
 
-A Python MCP server built with the official **MCP Python SDK / FastMCP
-1.x**.\
-The project exposes PostgreSQL, NLP/LLM, registry, and file capabilities
-as MCP tools.
+> **AI Production Engineer for detecting, investigating, and fixing production issues.**
 
-## Technology Stack
+PatchTheCode connects your existing **observability systems, code repositories, CI/CD, and LLMs through MCP**. It detects production exceptions and warnings, investigates the evidence, identifies the affected service and repository, traces the issue to the relevant code, generates a fix, validates it, and opens a pull request for human review.
 
--   Python 3.13+
--   UV
--   MCP Python SDK `1.29.1`
--   FastMCP
--   FastAPI / Uvicorn (REST API layer)
--   LangChain + OpenAI
--   PostgreSQL / Neon
--   YAML-based tool and prompt configuration
--   ngrok (optional public reverse proxy)
+**Your infrastructure. Your repositories. Your models. One production engineering agent.**
 
-------------------------------------------------------------------------
+---
 
-# 1. Installation
+## Why PatchTheCode?
 
-## Prerequisites
+Production debugging often means jumping between multiple systems:
 
-Install:
-
--   Python 3.13+
--   UV
--   An OpenAI API key if using the NLP tools
--   A PostgreSQL/Neon connection string if using PostgreSQL tools
-
-Verify UV:
-
-``` powershell
-uv --version
-```
-
-## Create / sync the environment
-
-From the project root:
-
-``` powershell
-uv sync
-```
-
-Run all Python commands through UV:
-
-``` powershell
-uv run python --version
-```
-
-The project is pinned to MCP 1.x because the code uses:
-
-``` python
-from mcp.server.fastmcp import FastMCP
-```
-
-The current verified MCP version is:
-
-``` text
-mcp 1.29.1
-```
-
-------------------------------------------------------------------------
-
-# 2. Environment Configuration
-
-Create or update `.env` in the project root.
-
-Typical variables used by the project include:
-
-``` env
-OPENAI_API_KEY=your_openai_api_key
-NEON_DB_URL=your_postgresql_connection_string
-API_KEY=your_rest_api_key
-TOOLS_YAML_PATH=C:\Users\<username>\mcp_server\config\tools.yaml
-```
-
-Do not commit real credentials to source control.
-
-`env_loader.py` loads `.env` before the server initializes.
-
-------------------------------------------------------------------------
-
-# 3. Project Structure
-
-``` text
-mcp_server/
-│
-├── server.py
-├── server_stdio.py
-│
-├── api.py
-├── api_router.py
-├── auto_router.py
-├── auth.py
-│
-├── env_loader.py
-├── logging_config.py
-├── start_hidden.ps1
-│
-├── config/
-│   ├── tools.yaml
-│   ├── prompt_loader.py
-│   └── prompts/
-│       ├── agents.yaml
-│       ├── core.yaml
-│       ├── experiments.yaml
-│       ├── nlp.yaml
-│       ├── routing.yaml
-│       ├── safety.yaml
-│       └── tools.yaml
-│
-├── tools/
-│   ├── __init__.py
-│   ├── files.py
-│   ├── nlp.py
-│   ├── postgres.py
-│   ├── registry.py
-│   └── tool_registry.py
-│
-└── tests/
-    └── test_prompts.py
-```
-
-The ZIP also contains runtime/logging artifacts and legacy Redis-related
-files. Those are not part of the intended active MCP architecture.
-
-------------------------------------------------------------------------
-
-# 4. Purpose of Each File
-
-## MCP Server
-
-### `server.py`
-
-**Production MCP HTTP/SSE entry point.**
-
-Responsibilities:
-
-1.  Load environment configuration.
-2.  Create the FastMCP instance.
-3.  Register PostgreSQL, NLP, registry, and file tools.
-4.  Start FastMCP using SSE transport.
-
-``` text
-MCP Client
-    ↓
-SSE / HTTP
-    ↓
-server.py
-    ↓
-FastMCP
-    ↓
-tools/
-```
-
-Run it with:
-
-``` powershell
-uv run python server.py
-```
-
-The development server currently runs on:
-
-``` text
-http://127.0.0.1:9898
-```
-
-and the SSE endpoint is:
-
-``` text
-http://127.0.0.1:9898/sse
-```
-
-### `server_stdio.py`
-
-**Development/debug MCP server for MCP Inspector.**
-
-It registers the same FastMCP tools as `server.py`, but uses the default
-stdio transport.
-
-Run:
-
-``` powershell
-uv run python server_stdio.py
-```
-
-This is for local development/debugging, not the public HTTP deployment.
-
-------------------------------------------------------------------------
-
-# 5. Tools
-
-The `tools/` directory contains the actual capabilities exposed through
-FastMCP.
-
-## `tools/postgres.py`
-
-PostgreSQL capability.
-
-MCP tools:
-
-``` text
-execute_sql
-get_schema
-```
-
-Responsibilities:
-
--   Connect to PostgreSQL/Neon.
--   Execute SQL.
--   Retrieve public-schema metadata.
--   Apply the project's SQL validation before execution.
-
-## `tools/nlp.py`
-
-NLP/LLM capability.
-
-MCP tools:
-
-``` text
-classify_intent
-generate_sql
-```
-
-Uses:
-
--   LangChain
--   OpenAI
--   YAML prompt configuration
-
-The prompt and model policies are loaded through `PromptRegistry`.
-
-## `tools/registry.py`
-
-Custom tool-intent resolution.
-
-MCP tool:
-
-``` text
-resolve_tool_by_intent
-```
-
-It reads `TOOLS_YAML_PATH` and maps an intent/operation to a configured
-tool name.
-
-This is a **custom application registry**. It is separate from MCP's
-native `tools/list` discovery mechanism.
-
-## `tools/files.py`
-
-File-system capability.
-
-MCP tool:
-
-``` text
-list_files
-```
-
-Lists files in a specified directory.
-
-## `tools/tool_registry.py`
-
-Alternative/older registry implementation.
-
-It overlaps with `tools/registry.py`. The active `server.py` imports
-`registry.py`, so this file is not part of the primary MCP registration
-path.
-
-## `tools/__init__.py`
-
-Marks `tools` as a Python package and supports imports such as:
-
-``` python
-from tools import postgres, nlp, registry, files
-```
-
-------------------------------------------------------------------------
-
-# 6. FastAPI REST Layer
-
-FastAPI is a separate HTTP/REST interface around selected Python tool
-functions.
-
-## `api.py`
-
-Creates the FastAPI application:
-
-``` text
-api.py
+```text
+Alert
   ↓
-FastAPI()
+Logs / Errors / Traces
   ↓
-auto_router + api_router
-```
-
-Run with:
-
-``` powershell
-uv run uvicorn api:app --host 127.0.0.1 --port 5000
-```
-
-## `auto_router.py`
-
-Automatically generates REST endpoints for selected tool functions.
-
-Current mappings include:
-
-``` text
-POST /postgres/execute
-POST /postgres/schema
-POST /nlp/classify
-POST /nlp/generate_sql
-POST /registry/resolve
-POST /files/list
-```
-
-It uses Python introspection and Pydantic `create_model()` to derive
-request models from function signatures.
-
-All routes in this router use the `require_api_key` dependency.
-
-## `api_router.py`
-
-Contains additional manually defined FastAPI routes.
-
-It is separate from the dynamically generated routes in
-`auto_router.py`.
-
-## `auth.py`
-
-Provides REST API-key authentication through the `X-API-Key` HTTP
-header.
-
-## `logging_config.py`
-
-Configures rotating audit logging.
-
-The audit log is written to:
-
-``` text
-audit.log
-```
-
-------------------------------------------------------------------------
-
-# 7. Configuration
-
-## `config/tools.yaml`
-
-Defines the application's custom operation/tool registry.
-
-Example:
-
-``` yaml
-tools:
-  postgres_select:
-    operation: SELECT
-```
-
-This configuration is consumed by the registry code.
-
-## `config/prompt_loader.py`
-
-Loads prompt definitions from the YAML prompt files.
-
-## `config/prompts/*.yaml`
-
-Stores prompt templates and model/policy configuration for different
-application areas, including:
-
--   agents
--   core
--   experiments
--   NLP
--   routing
--   safety
--   tools
-
-Keeping prompts in YAML allows prompt/configuration changes without
-embedding all prompt text directly in Python code.
-
-------------------------------------------------------------------------
-
-# 8. Running the FastMCP Server
-
-## HTTP/SSE server
-
-Start:
-
-``` powershell
-uv run python server.py
-```
-
-Expected output:
-
-``` text
-Uvicorn running on http://127.0.0.1:9898
-```
-
-MCP SSE endpoint:
-
-``` text
-http://127.0.0.1:9898/sse
-```
-
-This is the server intended for HTTP-based MCP clients and development
-through a reverse proxy such as ngrok.
-
-------------------------------------------------------------------------
-
-# 9. Verify the MCP Server
-
-First verify the HTTP/SSE endpoint:
-
-``` powershell
-uv run python -c "import requests; r=requests.get('http://127.0.0.1:9898/sse', stream=True); print(r.status_code); print(r.headers.get('content-type'))"
-```
-
-Expected:
-
-``` text
-200
-text/event-stream; charset=utf-8
-```
-
-A request to `/` returning `404 Not Found` is not a server failure; `/`
-is not the MCP SSE endpoint.
-
-------------------------------------------------------------------------
-
-# 10. Verify MCP Tool Discovery
-
-The server should expose:
-
-``` text
-execute_sql
-get_schema
-classify_intent
-generate_sql
-resolve_tool_by_intent
-list_files
-```
-
-A simple MCP client test can connect to:
-
-``` text
-http://127.0.0.1:9898/sse
-```
-
-and call the MCP `tools/list` operation.
-
-The important distinction is:
-
-``` text
-FastMCP
+Deployment History
   ↓
-MCP protocol
+Service
   ↓
-tools/list
+Repository
   ↓
-registered MCP tools
+Source Code
+  ↓
+Root Cause
+  ↓
+Fix
+  ↓
+Tests / CI
+  ↓
+Pull Request
 ```
 
-No custom discovery mechanism is required for native MCP tool discovery.
+PatchTheCode brings this workflow together into one AI-driven investigation and remediation loop.
 
-------------------------------------------------------------------------
+Instead of manually moving between tools:
 
-# 11. MCP Inspector Development Server
-
-For local MCP Inspector debugging:
-
-``` powershell
-uv run python server_stdio.py
+```text
+Production issue
+      ↓
+PatchTheCode
+      ↓
+Investigate evidence
+      ↓
+Find affected repository
+      ↓
+Identify root cause
+      ↓
+Generate fix
+      ↓
+Run validation
+      ↓
+Open PR
+      ↓
+Human review
 ```
 
-`server_stdio.py` is intentionally a development/debug entry point.
+PatchTheCode is designed to work **with your existing engineering infrastructure**, not replace it.
 
-It uses stdio rather than SSE.
+---
 
-------------------------------------------------------------------------
+## How It Works
 
-# 12. ngrok
+### 1. Detect
 
-For exposing the HTTP server through ngrok:
+PatchTheCode reads production exceptions and warnings from connected MCP servers.
 
-1.  Start the FastMCP SSE server:
+It can work with the observability systems already used by your organization.
 
-``` powershell
-uv run python server.py
+### 2. Investigate
+
+The agent gathers relevant evidence instead of blindly sending large volumes of raw logs to an LLM.
+
+Investigation can include:
+
+- Exception details
+- Stack traces
+- Error frequency
+- Recent occurrences
+- Deployment information
+- Related events
+- Service metadata
+- Recent code changes
+- Repository history
+
+### 3. Discover the Repository
+
+PatchTheCode can search connected code repositories through MCP to determine:
+
+```text
+Production issue
+      ↓
+Service
+      ↓
+Repository
+      ↓
+Branch / Commit
+      ↓
+File
+      ↓
+Function / Code path
 ```
 
-2.  In another terminal:
+This is particularly useful in environments with many services and repositories where the source repository is not known beforehand.
 
-``` powershell
-ngrok http 9898
+### 4. Determine Root Cause
+
+The agent forms hypotheses from the available evidence and investigates the most relevant information.
+
+The goal is not simply:
+
+> "Here is an error."
+
+It is:
+
+> "Here is the production failure, the evidence connecting it to this code path, and the likely reason it is occurring."
+
+### 5. Generate a Fix
+
+When sufficient evidence exists, PatchTheCode can modify the relevant code in a controlled development context.
+
+Production environments remain read-only during investigation.
+
+### 6. Validate
+
+The generated change can be validated through:
+
+- Unit tests
+- Integration tests
+- Static checks
+- Build checks
+- Repository CI
+- Other configured validation workflows
+
+### 7. Open a Pull Request
+
+PatchTheCode can create a PR containing:
+
+- The proposed code change
+- Root-cause explanation
+- Production evidence
+- Investigation context
+- Validation results
+- Relevant affected files
+
+A human engineer remains in control of the final review and merge.
+
+---
+
+## Architecture
+
+```text
+                     ┌──────────────────────────┐
+                     │      PatchTheCode        │
+                     │                          │
+                     │  Detection               │
+                     │  Investigation           │
+                     │  Repository Discovery    │
+                     │  Root Cause Analysis     │
+                     │  Code Modification       │
+                     │  Validation              │
+                     │  PR Generation           │
+                     └────────────┬─────────────┘
+                                  │
+                 ┌────────────────┼────────────────┐
+                 │                │                │
+                 ▼                ▼                ▼
+        ┌────────────────┐ ┌───────────────┐ ┌───────────────┐
+        │ Observability  │ │ Code / Git    │ │ CI / DevTools │
+        │     MCPs       │ │     MCPs      │ │     MCPs      │
+        └───────┬────────┘ └───────┬───────┘ └───────┬───────┘
+                │                  │                 │
+        Logs / Errors        Repositories       Tests / CI
+        Events / Traces     Commits / PRs      Builds / Checks
+        Deployments         Source Code
 ```
 
-Use the resulting public HTTPS URL together with the MCP SSE path:
+### Model Layer
 
-``` text
-https://<ngrok-domain>/sse
+PatchTheCode is designed to be **model agnostic**.
+
+You can configure the LLMs appropriate for your environment rather than being locked into a single model provider.
+
+The architecture can support different models for different tasks, such as:
+
+```text
+Investigation → Reasoning model
+Code changes  → Coding model
+Validation    → Test / review model
 ```
 
-Do not expose an unauthenticated production MCP server publicly. Review
-authentication and authorization at the MCP HTTP boundary before public
-deployment.
+---
 
-------------------------------------------------------------------------
+## MCP-Native
 
-# 13. Tests
+MCP is the integration boundary between PatchTheCode and your engineering systems.
 
-Run the test suite with:
+This means PatchTheCode does not need to own your:
 
-``` powershell
-uv run pytest
+- Logs
+- Error tracking
+- Traces
+- Source repositories
+- CI/CD
+- Developer communication
+- LLM infrastructure
+
+If your system exposes the capabilities PatchTheCode needs through MCP, it can potentially become part of the investigation workflow.
+
+### Example MCP Connections
+
+**Observability**
+
+- Error tracking
+- Log management
+- Cloud logging
+- APM
+- Distributed tracing
+- Monitoring
+
+**Code**
+
+- GitHub
+- GitLab
+- Bitbucket
+- Internal Git systems
+
+**Engineering**
+
+- CI/CD
+- Issue trackers
+- Slack / Teams
+- Deployment systems
+
+> MCP is the integration layer. The core intelligence lives in PatchTheCode's investigation, evidence gathering, repository discovery, reasoning, remediation, and validation workflow.
+
+---
+
+## Example
+
+Suppose production starts reporting:
+
+```text
+NullPointerException
+
+PaymentService.processPayment()
+PaymentService.java:184
+
+Occurrences: 1,842
+First seen: 10:32 UTC
+Spike began after deployment: payments-api v2.8.4
 ```
 
-Run the prompt tests specifically:
+PatchTheCode can investigate:
 
-``` powershell
-uv run pytest tests/test_prompts.py
+```text
+Exception
+   ↓
+Payment Service
+   ↓
+Recent Deployment
+   ↓
+Repository Discovery
+   ↓
+PaymentService.java
+   ↓
+Relevant Code Path
+   ↓
+Recent Commit
+   ↓
+Root Cause Hypothesis
+   ↓
+Candidate Fix
+   ↓
+Tests
+   ↓
+Pull Request
 ```
 
-------------------------------------------------------------------------
+The resulting PR can provide both the code change and the reasoning/evidence behind it.
 
-# 14. Development Workflow
+---
 
-Recommended local workflow:
+## Safety & Human Review
 
-### Terminal 1 --- FastMCP
+PatchTheCode is designed around a **human-reviewed remediation workflow**.
 
-``` powershell
-uv run python server.py
+The intended execution boundary is:
+
+```text
+Production
+   │
+   │ Read-only
+   ▼
+Investigation
+   │
+   ▼
+Code Change
+   │
+   ▼
+Tests / CI
+   │
+   ▼
+Pull Request
+   │
+   ▼
+Human Review
+   │
+   ▼
+Merge / Deploy
 ```
 
-### Terminal 2 --- MCP/API testing
+PatchTheCode should not silently make irreversible production changes.
 
-Use your MCP client or REST client against:
+The final merge and production deployment remain subject to the team's existing engineering controls.
 
-``` text
-http://127.0.0.1:9898/sse
+See [SECURITY.md](SECURITY.md) for security guidance.
+
+---
+
+## Project Status
+
+🚧 **Early development**
+
+PatchTheCode is being developed as an open-source AI Production Engineer.
+
+The initial focus is:
+
+- [x] MCP-first architecture
+- [ ] Production exception and warning detection
+- [ ] Exception fingerprinting and deduplication
+- [ ] Evidence collection
+- [ ] Automatic repository discovery
+- [ ] Root-cause investigation
+- [ ] AI-assisted code changes
+- [ ] Automated validation
+- [ ] Pull-request generation
+- [ ] Developer notifications
+- [ ] Investigation history
+- [ ] Fix outcome feedback
+- [ ] Learning from accepted/rejected fixes
+
+Items marked as incomplete are part of the development roadmap and should not be interpreted as currently implemented functionality.
+
+---
+
+## Roadmap
+
+### Phase 1 — Investigation
+
+- MCP connector registry
+- Exception normalization
+- Fingerprinting and deduplication
+- Evidence collection
+- Investigation planner
+- Root-cause analysis
+- Repository discovery
+
+### Phase 2 — Remediation
+
+- Code modification
+- Test selection
+- Automated validation
+- PR generation
+- Investigation reports
+- Slack / Teams notifications
+
+### Phase 3 — Learning
+
+- Fix outcome tracking
+- Accepted/rejected fix feedback
+- Investigation history
+- Reusable debugging skills
+- Production debugging playbooks
+- Continuous improvement of investigation strategies
+
+---
+
+## Design Principles
+
+### Bring Your Own Stack
+
+PatchTheCode should work with the infrastructure you already operate.
+
+### Evidence Before Action
+
+The agent should gather relevant evidence before proposing or applying a code change.
+
+### Read Production, Modify Development
+
+Production is investigated through read access. Code changes happen in a controlled development workflow.
+
+### Human Review
+
+AI-generated fixes should pass through the organization's normal review and deployment process.
+
+### Model Agnostic
+
+The system should not depend on a single LLM provider.
+
+### Explainable Remediation
+
+A proposed fix should include the evidence and reasoning that led to it, together with validation results.
+
+---
+
+## Getting Started
+
+> **Note:** PatchTheCode is currently under active development. Setup instructions will evolve as the first runnable release is published.
+
+### Clone
+
+```bash
+git clone https://github.com/<your-org>/patchthecode.git
+cd patchthecode
 ```
 
-For REST testing, run:
+### Configure MCP
 
-``` powershell
-uv run uvicorn api:app --host 127.0.0.1 --port 5000
+Configure the MCP servers that expose your observability and code systems.
+
+A typical deployment may look like:
+
+```text
+PatchTheCode
+    ├── Observability MCP
+    ├── Git / Repository MCP
+    ├── CI / Validation MCP
+    └── Communication MCP
 ```
 
-### Optional --- public tunnel
+### Configure Your Model
 
-``` powershell
-ngrok http 9898
+Provide the LLM configuration required by your deployment.
+
+PatchTheCode is intended to support configurable model providers rather than requiring a single provider.
+
+### Run
+
+Detailed installation and execution instructions will be added alongside the first stable runnable release.
+
+---
+
+## Repository Structure
+
+The project is organized around the production debugging workflow:
+
+```text
+patchthecode/
+├── agent/
+├── investigation/
+├── evidence/
+├── repository/
+├── remediation/
+├── validation/
+├── integrations/
+├── mcp/
+├── tests/
+└── ...
 ```
 
-------------------------------------------------------------------------
+The exact structure may evolve during early development.
 
-# 15. Architecture Summary
+---
 
-``` text
-                         MCP Client
-                             │
-                             │ MCP / SSE
-                             ▼
-                        server.py
-                             │
-                         FastMCP
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-         postgres.py      nlp.py       registry.py
-              │              │              │
-              └──────────────┼──────────────┘
-                             ▼
-                         files.py
+## Contributing
 
+Contributions are welcome.
 
-                  Separate REST Interface
-                             │
-                             ▼
-                           api.py
-                             │
-                 ┌───────────┴───────────┐
-                 ▼                       ▼
-           auto_router.py          api_router.py
-                 │
-                 ▼
-          Python tool functions
-```
+Useful contributions include:
 
-## Core Principle
+- MCP integrations
+- Investigation strategies
+- Repository discovery
+- Evidence extraction
+- Root-cause analysis
+- Validation adapters
+- Test integrations
+- Developer workflows
+- Security improvements
+- Documentation
 
-`server.py` is the **MCP composition and HTTP/SSE entry point**.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-`server_stdio.py` is the **development/debug stdio entry point**.
+---
 
-`tools/` contains the **actual capabilities**.
+## Security
 
-`api.py`, `api_router.py`, and `auto_router.py` form a **separate REST
-API layer**.
+If you discover a security vulnerability, please do not open a public GitHub issue.
 
-`config/` contains **tool and prompt configuration**.
+See [SECURITY.md](SECURITY.md) for the reporting process.
 
-`ngrok` is an optional **external reverse proxy/tunnel**, not part of
-FastMCP itself.
+PatchTheCode may interact with production observability systems and source repositories. Treat credentials, tokens, source code, logs, and production data as sensitive.
+
+---
+
+## License
+
+PatchTheCode is released under the **MIT License**.
+
+See [LICENSE](LICENSE).
+
+---
+
+## Vision
+
+PatchTheCode aims to move production debugging from:
+
+> **"An engineer received an alert and now has to investigate everything manually."**
+
+toward:
+
+> **"An AI Production Engineer investigated the issue, found the relevant code, prepared a validated fix, and opened a PR for the engineer to review."**
+
+**Detect. Investigate. Patch the code.**
