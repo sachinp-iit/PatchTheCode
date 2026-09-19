@@ -1,0 +1,18 @@
+[
+  {
+    "name": "coralogix_mcp",
+    "kind": "observability",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@coralogix/mcp-server"],
+    "env": {}
+  },
+  {
+    "name": "github_mcp",
+    "kind": "git",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github"],
+    "env": {}
+  }
+]
