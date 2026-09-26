@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import logging
 
-from patchthecode.domain.models import CodeLocation, InvestigationReport, RootCause
+from patchthecode.domain.models import InvestigationReport
+from patchthecode.investigation.analyzer import RootCauseAnalyzer
 from patchthecode.investigation.evidence import EvidenceCollector
 from patchthecode.investigation.planner import InvestigationPlanner
 from patchthecode.llm.gateway import LLMGateway
 from patchthecode.notifications.notifier import Notifier
 from patchthecode.remediation.fixer import FixGenerator
-from patchthecode.repository.discovery import RepositoryDiscovery
 from patchthecode.storage.store import Store
 from patchthecode.validation.runner import ValidationRunner
 
@@ -38,7 +38,7 @@ class Agent:
         self.notifiers = notifiers
         self.connectors = connectors or {}
         self.evidence_collector = EvidenceCollector(planner=InvestigationPlanner(gateway=gateway))
-        self.repository = RepositoryDiscovery()
+        self.analyzer = RootCauseAnalyzer(gateway=gateway)
         self.fixer = FixGenerator(gateway=gateway)
         self.validation = ValidationRunner()
 
@@ -63,13 +63,15 @@ class Agent:
             logger.exception("evidence collection failed for %s", incident.id)
 
         if report.evidence:
-            location = await self.repository.resolve(incident, self.connectors.get("github_mcp"))
-            report.root_cause = RootCause(
-                location=location or CodeLocation(repository="unknown"),
-                hypothesis="TODO: root-cause hypothesis from LLM",
-                explanation="TODO: filled by root_cause_prompt",
-                confidence=0.0,
-            )
+            report.root_cause = await self.analyzer.analyze(incident, report.evidence)
+            location = report.root_cause.location
+            if location.repository != "unknown" and location.file_path:
+                logger.debug(
+                    "resolved root cause for %s to %s@%s",
+                    incident.id,
+                    location.repository,
+                    location.file_path,
+                )
         else:
             report.status = "no_evidence"
 
