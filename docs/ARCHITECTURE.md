@@ -143,18 +143,18 @@ prompts. Do not bypass this path.
 
 1. **MCP tool names**: run `inspect-mcp` against real Coralogix + GitHub MCP
    servers; align `integrations/coralogix/client.py` and
-   `integrations/github/client.py`.
-2. **Evidence planner**: replace the hardcoded `_plan` in
-   `investigation/evidence.py` with the LLM-driven plan in
-   `llm/prompts.investigate_incident_prompt`.
-3. **Root-cause + fix flow**: call `root_cause_prompt` / `generate_fix_prompt`
-   in `agent/orchestrator.py`.
-4. **Git write path**: implement `open_pull_request` behind a confirmation
-   gate (branch create → commit → push → PR).
-5. **GitLab / App Insights / Sentry adapters**: copy `integrations/coralogix/`
-   shape into a new subpackage.
-6. **Learning loop**: track PR merged/closed in the Store; replay accepted
+   `integrations/github/client.py` (`GitHubClient.tool_names` remaps writes).
+2. **GitLab / App Insights / Sentry adapters**: copy `integrations/coralogix/`
+   shape into a new subpackage (needs a `_find_git_connector`-style generic for
+   observability connectors, not just name-based `coralogix_mcp` lookups).
+3. **Learning loop**: track PR merged/closed in the Store; replay accepted
    fixes in tests.
+
+Done:
+- Evidence planner (LLM-driven, `investigation/planner.py`).
+- Root-cause + fix flow (`analyzer.py`, `remediation/fixer.py`).
+- Git write path (`remediation/patch.py` + `open_pull_request`) behind the
+  approval gate (`security/approver.py`; opt in via `PATCHTHECODE_AUTO_PR`).
 
 ## Test / lint
 

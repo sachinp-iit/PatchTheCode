@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     model_validation: str | None = Field(default=None, alias="PATCHTHECODE_MODEL_VALIDATION")
     llm_timeout_seconds: int = Field(default=120, alias="PATCHTHECODE_LLM_TIMEOUT_SECONDS")
 
+    auto_pr: bool = Field(default=False, alias="PATCHTHECODE_AUTO_PR")
+
     mcp_config: Path | None = Field(default=None, alias="PATCHTHECODE_MCP_CONFIG")
     store_path: Path = Field(default=Path("data/patchthecode.db"), alias="PATCHTHECODE_STORE_PATH")
 

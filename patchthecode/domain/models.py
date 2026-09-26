@@ -101,6 +101,7 @@ class PullRequestData(BaseModel):
     head_branch: str
     description: str
     diff: str
+    files: list[str] = Field(default_factory=list, description="file paths the diff touches")
 
 
 class PullRequestResult(BaseModel):

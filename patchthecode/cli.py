@@ -46,7 +46,13 @@ def _build_agent(settings: Settings) -> Agent:
         slack_webhook_url=settings.slack_webhook_url,
         teams_webhook_url=settings.teams_webhook_url,
     )
-    return Agent(gateway=gateway, store=store, notifiers=notifiers, connectors=_build_connectors(settings))
+    return Agent(
+        gateway=gateway,
+        store=store,
+        notifiers=notifiers,
+        connectors=_build_connectors(settings),
+        auto_pr=settings.auto_pr,
+    )
 
 
 @app.command()

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from patchthecode.domain.models import InvestigationReport
+from patchthecode.domain.models import InvestigationReport, PullRequestData
 from patchthecode.integrations.github import GitHubClient
 from patchthecode.investigation.analyzer import RootCauseAnalyzer
 from patchthecode.investigation.evidence import EvidenceCollector
@@ -17,6 +17,7 @@ from patchthecode.investigation.planner import InvestigationPlanner
 from patchthecode.llm.gateway import LLMGateway
 from patchthecode.notifications.notifier import Notifier
 from patchthecode.remediation.fixer import FixGenerator
+from patchthecode.security.approver import Approver, AutoApprover, LoggingApprover
 from patchthecode.storage.store import Store
 from patchthecode.validation.runner import ValidationRunner
 
@@ -33,6 +34,8 @@ class Agent:
         store: Store,
         notifiers: list[Notifier],
         connectors: dict | None = None,
+        auto_pr: bool = False,
+        approver: Approver | None = None,
     ) -> None:
         self.gateway = gateway
         self.store = store
@@ -43,6 +46,8 @@ class Agent:
         self.fixer = FixGenerator(gateway=gateway)
         self.validation = ValidationRunner()
         self.github = self._find_git_connector()
+        self.ci = self._find_ci_connector()
+        self.approver = approver or (AutoApprover() if auto_pr else LoggingApprover())
 
     def _find_git_connector(self) -> GitHubClient | None:
         """Wrap the git-capable MCP connector, preferring kind over name."""
@@ -51,6 +56,13 @@ class Agent:
                 return GitHubClient(client)
         fallback = self.connectors.get("github_mcp")
         return GitHubClient(fallback) if fallback is not None else None
+
+    def _find_ci_connector(self):
+        """Locate the CI/MCP connector used to validate a fix, if any."""
+        for client in self.connectors.values():
+            if getattr(getattr(client, "connection", None), "kind", None) == "ci":
+                return client
+        return None
 
     async def handle(self, incident) -> InvestigationReport:
         """Run the full pipeline for a new incident, or short-circuit duplicates."""
@@ -95,4 +107,71 @@ class Agent:
             except Exception:  # noqa: BLE001 - a read failure just means no fix this round
                 logger.warning("could not fetch source for %s", root_cause.location.file_path, exc_info=True)
         report.fix = await self.fixer.propose(root_cause.location, snippet or "", root_cause)
-        report.status = "fix_proposed" if report.fix.diff else "fix_unavailable"
+        if not report.fix.diff:
+            report.status = "fix_unavailable"
+            return
+        report.status = "fix_proposed"
+        report.validation = await self.validation.validate(report.fix, self.ci_connector())
+        if not report.validation.passed:
+            report.status = "validation_failed"
+            return
+        if self.github is None:
+            report.status = "pr_write_failed"
+            return
+        if not await self.approver.approve(
+            "open_pull_request",
+            {
+                "repository": root_cause.location.repository,
+                "head_branch": self._pr_head_branch(report),
+                "base_branch": root_cause.location.branch or "main",
+                "files": report.fix.related_files,
+            },
+        ):
+            report.status = "pr_pending_approval"
+            return
+        try:
+            report.pull_request = await self.github.open_pull_request(self._build_pr_data(report))
+        except Exception:  # noqa: BLE001 - a failed write stays a failed write, not a crash
+            logger.exception("failed to open PR for %s", report.incident.id)
+            report.status = "pr_write_failed"
+            return
+        report.status = "pr_opened"
+
+    def ci_connector(self):
+        """Return the CI-MCP connector, if any, for validation checks."""
+        return self.ci
+
+    @staticmethod
+    def _pr_head_branch(report: InvestigationReport) -> str:
+        incident_id = report.incident.id.replace("/", "-")[-20:]
+        return f"patchthecode/{incident_id}"
+
+    @staticmethod
+    def _build_pr_data(report: InvestigationReport) -> PullRequestData:
+        if report.root_cause is None or report.fix is None:
+            raise RuntimeError("cannot build PR data without a root cause and fix")
+        location = report.root_cause.location
+        fix = report.fix
+        validation = report.validation
+        evidence = "\n".join(
+            f"- [{item.source_system}/{item.kind}] {item.confidence:.0%}"
+            for item in report.evidence
+        )
+        description = (
+            f"Auto-detected by PatchTheCode.\n\n"
+            f"## Root cause\n{report.root_cause.hypothesis}\n\n"
+            f"## Evidence\n{evidence}\n\n"
+            f"## Fix\n{fix.summary}\n\n"
+            f"## Validation\n"
+            f"{'passed' if validation and validation.passed else 'pending'}\n\n"
+            f"## Proposed diff\n```diff\n{fix.diff}\n```"
+        )
+        return PullRequestData(
+            repository=location.repository,
+            title=f"[PatchTheCode] {report.incident.title[:60]}",
+            base_branch=location.branch or "main",
+            head_branch=Agent._pr_head_branch(report),
+            description=description,
+            diff=fix.diff,
+            files=fix.related_files,
+        )

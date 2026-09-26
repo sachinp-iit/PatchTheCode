@@ -67,33 +67,83 @@ class _FakeMCP:
     def __init__(self, name: str, kind: str, tools: list[str]) -> None:
         self.connection = MCPConnection(name=name, kind=kind, transport="stdio", command="npx")
         self.tools = tools
+        self.calls: list[tuple[str, dict]] = []
 
     async def list_tools(self) -> list[dict]:
         return [{"name": t} for t in self.tools]
 
     async def call_tool(self, name: str, arguments: dict | None = None) -> dict:
+        self.calls.append((name, arguments or {}))
         if name == "query_logs":
             return {"content": "NPE log entry", "structured": {"hits": 1}}
         if name == "get_content":
             return {"content": "class Svc { def process(self): return None }", "structured": {}}
+        if name == "get_file_contents":
+            return {"content": "return None", "structured": {"path": "src/svc.py"}}
+        if name == "create_branch":
+            return {"content": "branch created", "structured": {}}
+        if name == "create_commit":
+            return {"content": "commit created", "structured": {}}
+        if name == "create_pull_request":
+            return {"content": "PR created", "structured": {"url": "https://github.com/payments/payments/pull/1", "number": 1}}
         return {"content": f"result of {name}", "structured": {}}
 
 
-async def test_agent_full_flow_generates_fix(tmp_path):
+async def test_agent_full_flow_blocks_pr_pending_approval(tmp_path):
     connectors = {
         "coralogix_mcp": _FakeMCP("coralogix_mcp", "observability", ["query_logs"]),
-        "github_mcp": _FakeMCP("github_mcp", "git", ["get_content"]),
+        "github_mcp": _FakeMCP("github_mcp", "git", ["get_content", "get_file_contents", "create_branch", "create_commit", "create_pull_request"]),
     }
     store = Store(tmp_path / "test.db")
     agent = Agent(gateway=_ScriptedGateway(), store=store, notifiers=[], connectors=connectors)
     report = await agent.handle(_incident(incident_id="full:1", fingerprint="fp-full"))
-    assert report.status == "fix_proposed"
+    assert report.status == "pr_pending_approval"
     assert report.fix is not None
     assert report.fix.diff.startswith("--- a/")
     assert report.fix.root_cause is not None
     assert report.fix.root_cause.location.repository == "payments"
     assert report.root_cause is not None
     assert report.root_cause.location.file_path == "src/svc.py"
+    assert report.pull_request is None
+
+
+async def test_agent_full_flow_opens_pr_when_auto_approved(tmp_path):
+    github = _FakeMCP(
+        "github_mcp",
+        "git",
+        ["get_file_contents", "create_branch", "create_commit", "create_pull_request"],
+    )
+    connectors = {
+        "coralogix_mcp": _FakeMCP("coralogix_mcp", "observability", ["query_logs"]),
+        "github_mcp": github,
+    }
+    store = Store(tmp_path / "test.db")
+    agent = Agent(
+        gateway=_ScriptedGateway(),
+        store=store,
+        notifiers=[],
+        connectors=connectors,
+        auto_pr=True,
+    )
+    report = await agent.handle(_incident(incident_id="pr:1", fingerprint="fp-pr"))
+    assert report.status == "pr_opened"
+    assert report.pull_request is not None
+    assert report.pull_request.url == "https://github.com/payments/payments/pull/1"
+    assert report.pull_request.number == 1
+
+    tool_names = [name for name, _ in github.calls]
+    assert "create_branch" in tool_names
+    assert "create_commit" in tool_names
+    assert "create_pull_request" in tool_names
+
+    commit_args = next(arguments for name, arguments in github.calls if name == "create_commit")
+    assert commit_args["branch"] == "patchthecode/pr:1"
+    assert commit_args["files"] == [{"path": "src/svc.py", "content": "return valid"}]
+
+    pr_args = next(arguments for name, arguments in github.calls if name == "create_pull_request")
+    assert pr_args["head"] == "patchthecode/pr:1"
+    assert pr_args["base"] == "main"
+    assert "## Root cause" in pr_args["body"]
 
 
 async def test_agent_fix_unavailable_without_git_connector(tmp_path):
