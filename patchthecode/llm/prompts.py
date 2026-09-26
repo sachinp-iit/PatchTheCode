@@ -9,6 +9,23 @@ from __future__ import annotations
 from typing import Any
 
 
+def evidence_plan_prompt(
+    incident: dict[str, Any],
+    available_mcp: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    """Decide what evidence to collect and from which connectors."""
+    user = (
+        f"Plan the evidence collection for this production incident.\n\n"
+        f"INCIDENT:\n{incident}\n\n"
+        f"AVAILABLE MCP CONNECTORS (name + kind + tool names):\n{available_mcp}\n\n"
+        "Return JSON {\"steps\": [{\"connector\": str, \"tool\": str, "
+        "\"arguments\": dict, \"purpose\": str}]}. Use only the listed "
+        "connector/tool names, request the narrowest time range and fields, "
+        "and order by most discriminating evidence first."
+    )
+    return [{"role": "user", "content": user}]
+
+
 def investigate_incident_prompt(incident: dict[str, Any], evidence: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Generate hypotheses and next investigation steps for an incident."""
     user = (

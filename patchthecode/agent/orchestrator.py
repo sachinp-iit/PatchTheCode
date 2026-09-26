@@ -11,6 +11,7 @@ import logging
 
 from patchthecode.domain.models import CodeLocation, InvestigationReport, RootCause
 from patchthecode.investigation.evidence import EvidenceCollector
+from patchthecode.investigation.planner import InvestigationPlanner
 from patchthecode.llm.gateway import LLMGateway
 from patchthecode.notifications.notifier import Notifier
 from patchthecode.remediation.fixer import FixGenerator
@@ -36,7 +37,7 @@ class Agent:
         self.store = store
         self.notifiers = notifiers
         self.connectors = connectors or {}
-        self.evidence_collector = EvidenceCollector()
+        self.evidence_collector = EvidenceCollector(planner=InvestigationPlanner(gateway=gateway))
         self.repository = RepositoryDiscovery()
         self.fixer = FixGenerator(gateway=gateway)
         self.validation = ValidationRunner()
