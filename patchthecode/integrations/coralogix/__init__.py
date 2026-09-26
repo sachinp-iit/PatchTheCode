@@ -1,5 +1,5 @@
 """Coralogix observability integration."""
 
-from patchthecode.integrations.coralogix.client import CoralogixClient
+from patchthecode.integrations.coralogix.client import CoralogixClient, CoralogixNormalizer
 
-__all__ = ["CoralogixClient"]
+__all__ = ["CoralogixClient", "CoralogixNormalizer"]

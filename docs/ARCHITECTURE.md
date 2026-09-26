@@ -141,13 +141,10 @@ prompts. Do not bypass this path.
 
 ## Where to build next (priority)
 
-1. **MCP tool names**: run `inspect-mcp` against real Coralogix + GitHub MCP
-   servers; align `integrations/coralogix/client.py` and
-   `integrations/github/client.py` (`GitHubClient.tool_names` remaps writes).
-2. **GitLab / App Insights / Sentry adapters**: copy `integrations/coralogix/`
-   shape into a new subpackage (needs a `_find_git_connector`-style generic for
-   observability connectors, not just name-based `coralogix_mcp` lookups).
-3. **Learning loop**: track PR merged/closed in the Store; replay accepted
+1. **MCP tool names**: run `inspect-mcp` against real Coralogix / Sentry /
+   App Insights / GitHub / GitLab MCP servers; align the default tool-name
+   maps in each `integrations/*/client.py`.
+2. **Learning loop**: track PR merged/closed in the Store; replay accepted
    fixes in tests.
 
 Done:
@@ -155,6 +152,9 @@ Done:
 - Root-cause + fix flow (`analyzer.py`, `remediation/fixer.py`).
 - Git write path (`remediation/patch.py` + `open_pull_request`) behind the
   approval gate (`security/approver.py`; opt in via `PATCHTHECODE_AUTO_PR`).
+- Pluggable adapters: Sentry, Application Insights, and GitLab clients plus
+  `integrations.factory.adapter_for` — selection is by MCP `kind` + optional
+  `system` hint, never by connector name.
 
 ## Test / lint
 

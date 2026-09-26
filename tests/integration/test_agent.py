@@ -86,6 +86,8 @@ class _FakeMCP:
             return {"content": "commit created", "structured": {}}
         if name == "create_pull_request":
             return {"content": "PR created", "structured": {"url": "https://github.com/payments/payments/pull/1", "number": 1}}
+        if name == "create_merge_request":
+            return {"content": "MR created", "structured": {"url": "https://gitlab.com/groups/payments/-/merge_requests/7", "number": 7}}
         return {"content": f"result of {name}", "structured": {}}
 
 
@@ -144,6 +146,46 @@ async def test_agent_full_flow_opens_pr_when_auto_approved(tmp_path):
     assert pr_args["head"] == "patchthecode/pr:1"
     assert pr_args["base"] == "main"
     assert "## Root cause" in pr_args["body"]
+
+
+async def test_agent_opens_merge_request_on_gitlab_connector(tmp_path):
+    gitlab_mcp = _FakeMCP(
+        "gitlab_vendor",
+        "git",
+        ["get_file_contents", "create_branch", "create_commit", "create_merge_request"],
+    )
+    gitlab_mcp.connection = MCPConnection(
+        name="gitlab_vendor",
+        kind="git",
+        system="gitlab",
+        transport="stdio",
+        command="npx",
+    )
+    connectors = {
+        "coralogix_mcp": _FakeMCP("coralogix_mcp", "observability", ["query_logs"]),
+        "gitlab_vendor": gitlab_mcp,
+    }
+    store = Store(tmp_path / "test.db")
+    agent = Agent(
+        gateway=_ScriptedGateway(),
+        store=store,
+        notifiers=[],
+        connectors=connectors,
+        auto_pr=True,
+    )
+    report = await agent.handle(_incident(incident_id="mr:1", fingerprint="fp-mr"))
+    assert report.status == "pr_opened"
+    assert report.pull_request is not None
+    assert report.pull_request.number == 7
+
+    tool_names = [name for name, _ in gitlab_mcp.calls]
+    assert "create_branch" in tool_names
+    assert "create_commit" in tool_names
+    assert "create_merge_request" in tool_names
+    assert "create_pull_request" not in tool_names
+
+    mr_args = next(arguments for name, arguments in gitlab_mcp.calls if name == "create_merge_request")
+    assert mr_args["head"] == "patchthecode/mr:1"
 
 
 async def test_agent_fix_unavailable_without_git_connector(tmp_path):

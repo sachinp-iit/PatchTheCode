@@ -22,6 +22,10 @@ class MCPConnection(BaseModel):
 
     name: str
     kind: str = Field(..., description='one of: observability, git, ci, communication, validation')
+    system: str | None = Field(
+        default=None,
+        description="vendor hint for adapter selection: coralogix, appinsights, sentry, github, gitlab, ...",
+    )
     transport: str = Field(default="stdio", description='"stdio" or "streamable-http"')
     command: str | None = None  # stdio transport: executable
     args: list[str] = Field(default_factory=list)  # stdio transport: args

@@ -8,8 +8,11 @@ the top-level loop stays honest about what happened.
 from __future__ import annotations
 
 import logging
+from typing import cast
 
+from patchthecode.config import MCPConnection
 from patchthecode.domain.models import InvestigationReport, PullRequestData
+from patchthecode.integrations.factory import adapter_for
 from patchthecode.integrations.github import GitHubClient
 from patchthecode.investigation.analyzer import RootCauseAnalyzer
 from patchthecode.investigation.evidence import EvidenceCollector
@@ -50,12 +53,18 @@ class Agent:
         self.approver = approver or (AutoApprover() if auto_pr else LoggingApprover())
 
     def _find_git_connector(self) -> GitHubClient | None:
-        """Wrap the git-capable MCP connector, preferring kind over name."""
+        """Wrap the git-capable MCP connector using the adapter factory."""
         for client in self.connectors.values():
-            if getattr(getattr(client, "connection", None), "kind", None) == "git":
-                return GitHubClient(client)
+            connection = cast(MCPConnection | None, getattr(client, "connection", None))
+            if connection is not None and connection.kind == "git":
+                return adapter_for(connection, client)
         fallback = self.connectors.get("github_mcp")
-        return GitHubClient(fallback) if fallback is not None else None
+        if fallback is None:
+            return None
+        fallback_connection = cast(MCPConnection | None, getattr(fallback, "connection", None))
+        if fallback_connection is not None:
+            return adapter_for(fallback_connection, fallback)
+        return adapter_for(MCPConnection(name="github_mcp", kind="git"), fallback)
 
     def _find_ci_connector(self):
         """Locate the CI/MCP connector used to validate a fix, if any."""
