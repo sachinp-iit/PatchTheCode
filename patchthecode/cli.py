@@ -1,8 +1,9 @@
 """PatchTheCode CLI: vertical-slice entry point.
 
 Currently supports:
-  - `inspect-mcp`: list what tools your configured MCP servers expose (great
-    for learning the real Coralogix / GitHub tool names).
+  - `inspect-mcp`: list what tools your configured MCP servers expose and how
+    each aligns to the tool maps PatchTheCode expects (great for learning the
+    real Coralogix / GitHub / Sentry tool names and aligning your server).
   - `replay`: feed a saved incident JSON through the investigation loop.
 """
 
@@ -21,6 +22,8 @@ from patchthecode.agent.orchestrator import Agent
 from patchthecode.config import Settings
 from patchthecode.domain import Severity
 from patchthecode.domain.models import Incident, IncidentSource
+from patchthecode.integrations.factory import adapter_for, hint_for
+from patchthecode.integrations.names import report_for
 from patchthecode.llm.gateway import LLMGateway
 from patchthecode.mcp.registry import ConnectorRegistry
 from patchthecode.notifications.notifier import build_notifiers
@@ -56,21 +59,46 @@ def _build_agent(settings: Settings) -> Agent:
 
 
 @app.command()
-def inspect_mcp() -> None:
-    """List connectors and tools exposed by the configured MCP servers."""
+def inspect_mcp(
+    dump_to: Annotated[
+        Path | None,
+        typer.Option(
+            "--dump-to",
+            help="Write one JSON report per connector into this directory",
+        ),
+    ] = None,
+) -> None:
+    """List configured MCP servers' tools and how they align to PatchTheCode's maps."""
     settings = _settings()
     registry = ConnectorRegistry(settings.mcp_connections())
     if not registry.names():
         console.print("[yellow]No MCP servers configured. Set PATCHTHECODE_MCP_CONFIG in .env.[/yellow]")
         return
-    console.print(f"Connectors: {registry.names()}")
 
     async def _inspect() -> None:
         for name in registry.names():
             client = registry.get(name)
             tools = await client.list_tools()
-            for tool in tools:
-                console.print(f"  [cyan]{name}[/cyan] -> {tool['name']}: {tool['description']}")
+            advertised = [str(tool["name"]) for tool in tools]
+            facade = adapter_for(client.connection, client)
+            system = getattr(facade, "system", hint_for(client.connection))
+            report = report_for(system, advertised)
+            console.print(f"\n[bold]{name}[/bold] (kind={client.connection.kind}, system={system})")
+            console.print(f"  advertised tools: {', '.join(advertised) or 'none'}")
+            for action in report["actions"]:
+                marker = "[green]aligned[/green]" if action["status"] == "aligned" else "[yellow]fallback[/yellow]"
+                suffix = "[cyan] (override)[/cyan]" if action["override"] else ""
+                console.print(
+                    f"  {action['action']} -> {action['chosen']} [{marker}]{suffix} | try: {', '.join(action['candidates'])}"
+                )
+            if dump_to is not None:
+                dump_to.mkdir(parents=True, exist_ok=True)
+                out = dump_to / f"{name}.json"
+                out.write_text(
+                    json.dumps({"connector": name, "advertised": advertised, "alignment": report}, indent=2),
+                    encoding="utf-8",
+                )
+                console.print(f"  wrote {out}")
 
     asyncio.run(_inspect())
 

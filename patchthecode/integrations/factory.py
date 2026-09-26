@@ -19,7 +19,7 @@ from patchthecode.integrations.sentry import SentryClient
 from patchthecode.mcp.client import MCPClient
 
 
-def _hint(connection: MCPConnection) -> str:
+def hint_for(connection: MCPConnection) -> str:
     """Resolve the vendor hint: explicit `system` field beats name guessing."""
     if connection.system:
         return connection.system.lower()
@@ -29,7 +29,7 @@ def _hint(connection: MCPConnection) -> str:
 def adapter_for(connection: MCPConnection, mcp_client: MCPClient) -> Any:
     """Build the client facade matching a connector's kind and system hint."""
     kind = connection.kind.lower()
-    hint = _hint(connection)
+    hint = hint_for(connection)
     if kind == "git":
         if "gitlab" in hint:
             return GitLabClient(mcp_client)

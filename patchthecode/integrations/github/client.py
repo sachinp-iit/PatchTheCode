@@ -7,7 +7,11 @@ directly.
 
 Tool names follow the standard github-mcp-server surface
 (``get_file_contents``, ``create_branch``, ``create_commit``,
-``create_pull_request``). Remap ``tool_names`` to match a different server.
+``create_pull_request``). The concrete names are resolved at runtime against
+the server's advertised tools (see ``integrations.names``): the first
+advertised candidate per action wins, a server-picked variant (e.g.
+``create_or_update_file``) is honored, and ``tool_names`` overrides stay
+verbatim.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ import logging
 from typing import Any
 
 from patchthecode.domain.models import CodeLocation, PullRequestData, PullRequestResult
+from patchthecode.integrations.names import align_tools
 from patchthecode.mcp.client import MCPClient
 from patchthecode.remediation.patch import PatchError, apply_unified_diff, diff_for_file
 
@@ -25,32 +30,39 @@ logger = logging.getLogger(__name__)
 class GitHubClient:
     """Facade over an MCP-backed GitHub connector."""
 
+    system = "github"
+
     def __init__(
         self,
         mcp_client: MCPClient,
         tool_names: dict[str, str] | None = None,
+        system: str | None = None,
     ) -> None:
         self.mcp = mcp_client
-        self.tool_names = tool_names or {
-            "search_repositories": "search_repositories",
-            "get_content": "get_file_contents",
-            "create_branch": "create_branch",
-            "create_commit": "create_commit",
-            "create_pr": "create_pull_request",
-            "get_pr": "get_pull_request",
-        }
+        self._system = (system or self.system).lower()
+        self._overrides = dict(tool_names or {})
+        self._aligned: dict[str, str] | None = None
+
+    async def _tool_names(self) -> dict[str, str]:
+        """Resolve action -> tool name against the server's advertised tools."""
+        if self._aligned is None:
+            advertised = [str(t.get("name", "")) for t in await self.mcp.list_tools()]
+            self._aligned = align_tools(self._system, advertised, self._overrides)
+        return self._aligned
 
     async def list_tools(self) -> list[dict[str, Any]]:
         return await self.mcp.list_tools()
 
     async def search_repository(self, query: str) -> list[dict[str, Any]]:
-        result = await self.mcp.call_tool(self.tool_names["search_repositories"], {"query": query})
+        names = await self._tool_names()
+        result = await self.mcp.call_tool(names["search_repositories"], {"query": query})
         return result["structured"].get("repositories", [])
 
     async def resolve_file(self, location: CodeLocation) -> str:
         """Fetch source for a resolved location."""
+        names = await self._tool_names()
         result = await self.mcp.call_tool(
-            self.tool_names["get_content"],
+            names["get_content"],
             {"repository": location.repository, "path": location.file_path or ""},
         )
         return result["content"]
@@ -61,16 +73,17 @@ class GitHubClient:
         Safe by construction: it only writes through the MCP git tools and
         only after the caller has passed the human-review gate.
         """
+        names = await self._tool_names()
         owner, repo_name = self._split_repo(data.repository)
 
-        new_files = await self._patched_files(data, owner, repo_name)
+        new_files = await self._patched_files(data, owner, repo_name, names)
         await self.mcp.call_tool(
-            self.tool_names["create_branch"],
+            names["create_branch"],
             {"owner": owner, "repo": repo_name, "branch": data.head_branch},
         )
         if new_files:
             await self.mcp.call_tool(
-                self.tool_names["create_commit"],
+                names["create_commit"],
                 {
                     "owner": owner,
                     "repo": repo_name,
@@ -80,7 +93,7 @@ class GitHubClient:
                 },
             )
         result = await self.mcp.call_tool(
-            self.tool_names["create_pr"],
+            names["create_pr"],
             {
                 "owner": owner,
                 "repo": repo_name,
@@ -100,9 +113,10 @@ class GitHubClient:
 
     async def get_pull_request(self, pr: PullRequestResult, repository: str) -> str:
         """Poll the review state of a PR: "open", "merged", or "closed"."""
+        names = await self._tool_names()
         owner, repo_name = self._split_repo(repository)
         result = await self.mcp.call_tool(
-            self.tool_names["get_pr"],
+            names["get_pr"],
             {"owner": owner, "repo": repo_name, "number": pr.number},
         )
         payload = result.get("structured") or {}
@@ -114,7 +128,9 @@ class GitHubClient:
             return "closed"
         return "open"
 
-    async def _patched_files(self, data: PullRequestData, owner: str, repo_name: str) -> list[dict[str, str]]:
+    async def _patched_files(
+        self, data: PullRequestData, owner: str, repo_name: str, names: dict[str, str]
+    ) -> list[dict[str, str]]:
         """Build {path, content} pairs for every file touched by the fix diff."""
         new_files: list[dict[str, str]] = []
         for path in data.files:
@@ -122,7 +138,7 @@ class GitHubClient:
             if not file_diff:
                 continue
             fetched = await self.mcp.call_tool(
-                self.tool_names["get_content"],
+                names["get_content"],
                 {
                     "owner": owner,
                     "repo": repo_name,

@@ -141,12 +141,12 @@ prompts. Do not bypass this path.
 
 ## Where to build next (priority)
 
-1. **MCP tool names**: run `inspect-mcp` against real Coralogix / Sentry /
-   App Insights / GitHub / GitLab / CI MCP servers; align the default tool-name
-   maps in each `integrations/*/client.py`.
-2. **Local test commands**: give `StaticValidator` real per-language command
-   templates (the `settings` seam is the constructor `commands` map) and a
-   checkout-producing CLI step so validation gates on real lint/test output.
+1. **Wire observability adapters into the pipeline**: the Coralogix / Sentry /
+   App Insights facades exist and normalize hits, but the detector still runs
+   against the raw connector — execute the plan steps against the adapted
+   client so evidence is normalized and deduplicated at the source.
+2. **Notifications**: Slack / Teams send a summary report; add review-request
+   prompts when a PR is blocked on approval.
 
 Done:
 - Evidence planner (LLM-driven, `investigation/planner.py`).
@@ -167,6 +167,12 @@ Done:
   and `StaticValidator` lints each changed file with per-language default
   commands (`ruff`, `eslint`, `gofmt`); tools missing from PATH surface as
   explicit skip rows, and validation now gates on this real output.
+- MCP tool-name alignment (`integrations/names.py`): every system ships an
+  ordered candidate tool map (first = preferred); clients resolve the concrete
+  name against the server's advertised `list_tools()` on first use, and
+  `tool_names` overrides win. `inspect-mcp --dump-to data/inspect` reports
+  per-action aligned/fallback status and writes JSON per connector. To tune a
+  real server, add candidates to `TOOL_SPECS` or pass `tool_names` overrides.
 
 ## Test / lint
 

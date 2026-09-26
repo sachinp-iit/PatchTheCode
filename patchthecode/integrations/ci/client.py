@@ -3,33 +3,42 @@
 A CI MCP server exposes tools that submit work to the pipeline (create a
 check run for a proposed diff) and report its results. This facade maps
 those onto the shapes PatchTheCode's validation runner expects. Tool names
-follow common CI MCP servers; remap via ``tool_names``.
+follow common CI MCP servers, aligned at runtime against the server's
+advertised tools (``integrations.names``); ``tool_names`` overrides win.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from patchthecode.integrations.names import align_tools
 from patchthecode.mcp.client import MCPClient
 
 
 class CIClient:
     """Facade over an MCP-backed CI connector."""
 
+    system = "ci"
+
     def __init__(self, mcp_client: MCPClient, tool_names: dict[str, str] | None = None) -> None:
         self.mcp = mcp_client
-        self.tool_names = tool_names or {
-            "create_check_run": "create_check_run",
-            "get_check_run": "get_check_run",
-        }
+        self._overrides = dict(tool_names or {})
+        self._aligned: dict[str, str] | None = None
+
+    async def _tool_names(self) -> dict[str, str]:
+        if self._aligned is None:
+            advertised = [str(t.get("name", "")) for t in await self.mcp.list_tools()]
+            self._aligned = align_tools(self.system, advertised, self._overrides)
+        return self._aligned
 
     async def list_tools(self) -> list[dict[str, Any]]:
         return await self.mcp.list_tools()
 
     async def submit_check(self, repository: str, diff: str, branch: str | None = None) -> str:
         """Ask CI to evaluate a proposed diff; returns a check reference."""
+        names = await self._tool_names()
         result = await self.mcp.call_tool(
-            self.tool_names["create_check_run"],
+            names["create_check_run"],
             {"repository": repository, "diff": diff, "branch": branch or "HEAD"},
         )
         structured = result.get("structured") or {}
@@ -37,7 +46,8 @@ class CIClient:
 
     async def poll_checks(self, check_ref: str) -> list[dict[str, str]]:
         """Return the outcome of a check run as [{name, status}]."""
-        result = await self.mcp.call_tool(self.tool_names["get_check_run"], {"check_ref": check_ref})
+        names = await self._tool_names()
+        result = await self.mcp.call_tool(names["get_check_run"], {"check_ref": check_ref})
         structured = result.get("structured") or {}
         rows = structured.get("checks") or structured.get("check_runs") or []
         if not rows and structured.get("status"):

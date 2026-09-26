@@ -2,7 +2,9 @@
 
 App Insights data arrives as log/trace/exception query results; the
 normalizer maps a single row onto ``NormalizedOccurrence`` so the detection
-pipeline can reason about it like any other system's occurrence.
+pipeline can reason about it like any other system's occurrence. Tool names
+are aligned against the server's advertised tools (``integrations.names``);
+``tool_names`` overrides win.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from typing import Any
 
 from patchthecode.detection.normalizer import NormalizedOccurrence, OccurrenceNormalizer
 from patchthecode.domain import Severity
+from patchthecode.integrations.names import align_tools
 from patchthecode.mcp.client import MCPClient
 
 
@@ -58,28 +61,36 @@ class AppInsightsNormalizer(OccurrenceNormalizer):
 class AppInsightsClient:
     """Facade over an MCP-backed Application Insights connector."""
 
+    system = "appinsights"
+
     def __init__(self, mcp_client: MCPClient, tool_names: dict[str, str] | None = None) -> None:
         self.mcp = mcp_client
         self.normalizer = AppInsightsNormalizer()
-        self.tool_names = tool_names or {
-            "query": "query",
-            "list_exceptions": "list_exceptions",
-        }
+        self._overrides = dict(tool_names or {})
+        self._aligned: dict[str, str] | None = None
+
+    async def _tool_names(self) -> dict[str, str]:
+        if self._aligned is None:
+            advertised = [str(t.get("name", "")) for t in await self.mcp.list_tools()]
+            self._aligned = align_tools(self.system, advertised, self._overrides)
+        return self._aligned
 
     async def list_tools(self) -> list[dict[str, Any]]:
         return await self.mcp.list_tools()
 
     async def query(self, query: str) -> list[NormalizedOccurrence]:
         """Run a KQL-style query and normalize every returned row."""
-        result = await self.mcp.call_tool(self.tool_names["query"], {"query": query})
+        names = await self._tool_names()
+        result = await self.mcp.call_tool(names["query"], {"query": query})
         rows = result["structured"].get("rows", result["structured"].get("tables", []))
         return [self.normalizer.normalize(row) for row in rows]
 
     async def list_exceptions(self, operation_id: str | None = None) -> list[NormalizedOccurrence]:
         """Fetch recent exceptions for an operation, normalized."""
+        names = await self._tool_names()
         arguments: dict[str, Any] = {}
         if operation_id:
             arguments["operation_id"] = operation_id
-        result = await self.mcp.call_tool(self.tool_names["list_exceptions"], arguments)
+        result = await self.mcp.call_tool(names["list_exceptions"], arguments)
         rows = result["structured"].get("events", [])
         return [self.normalizer.normalize(row) for row in rows]
