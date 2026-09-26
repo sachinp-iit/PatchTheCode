@@ -23,6 +23,7 @@ from patchthecode.remediation.fixer import FixGenerator
 from patchthecode.security.approver import Approver, AutoApprover, LoggingApprover
 from patchthecode.storage.store import Store
 from patchthecode.validation.runner import ValidationRunner
+from patchthecode.validation.static import StaticValidator
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ class Agent:
         connectors: dict | None = None,
         auto_pr: bool = False,
         approver: Approver | None = None,
+        static_validator: StaticValidator | None = None,
     ) -> None:
         self.gateway = gateway
         self.store = store
@@ -47,7 +49,7 @@ class Agent:
         self.evidence_collector = EvidenceCollector(planner=InvestigationPlanner(gateway=gateway))
         self.analyzer = RootCauseAnalyzer(gateway=gateway)
         self.fixer = FixGenerator(gateway=gateway)
-        self.validation = ValidationRunner()
+        self.validation = ValidationRunner(static=static_validator)
         self.github = self._find_git_connector()
         self.ci = self._find_ci_connector()
         self.approver = approver or (AutoApprover() if auto_pr else LoggingApprover())
@@ -67,10 +69,11 @@ class Agent:
         return adapter_for(MCPConnection(name="github_mcp", kind="git"), fallback)
 
     def _find_ci_connector(self):
-        """Locate the CI/MCP connector used to validate a fix, if any."""
+        """Wrap the CI-capable MCP connector via the adapter factory, if any."""
         for client in self.connectors.values():
-            if getattr(getattr(client, "connection", None), "kind", None) == "ci":
-                return client
+            connection = cast(MCPConnection | None, getattr(client, "connection", None))
+            if connection is not None and connection.kind == "ci":
+                return adapter_for(connection, client)
         return None
 
     async def handle(self, incident) -> InvestigationReport:

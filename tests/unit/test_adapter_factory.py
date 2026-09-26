@@ -1,5 +1,6 @@
 from patchthecode.config import MCPConnection
 from patchthecode.integrations.appinsights import AppInsightsClient
+from patchthecode.integrations.ci import CIClient
 from patchthecode.integrations.coralogix import CoralogixClient
 from patchthecode.integrations.factory import adapter_for
 from patchthecode.integrations.github import GitHubClient
@@ -31,6 +32,14 @@ def test_adapter_for_routes_observability_by_system_hint():
 
 def test_adapter_for_infers_sentry_from_name_when_system_missing():
     assert isinstance(adapter_for(_connection("sentry_prod", "observability"), object()), SentryClient)
+
+
+def test_adapter_for_returns_ci_client_for_ci_kind():
+    assert isinstance(adapter_for(_connection("pipeline", "ci"), object()), CIClient)
+
+
+def test_adapter_for_returns_ci_client_for_validation_kind():
+    assert isinstance(adapter_for(_connection("checks", "validation"), object()), CIClient)
 
 
 def test_adapter_for_returns_raw_client_for_unknown_kinds():

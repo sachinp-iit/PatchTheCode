@@ -142,11 +142,11 @@ prompts. Do not bypass this path.
 ## Where to build next (priority)
 
 1. **MCP tool names**: run `inspect-mcp` against real Coralogix / Sentry /
-   App Insights / GitHub / GitLab MCP servers; align the default tool-name
+   App Insights / GitHub / GitLab / CI MCP servers; align the default tool-name
    maps in each `integrations/*/client.py`.
-2. **CI validation**: run local test/static-check commands for the repo's
-   language (a `ci/` adapter) so `validation` produces real evidence instead
-   of passing when no checks are configured.
+2. **Local test commands**: give `StaticValidator` real per-language command
+   templates (the `settings` seam is the constructor `commands` map) and a
+   checkout-producing CLI step so validation gates on real lint/test output.
 
 Done:
 - Evidence planner (LLM-driven, `investigation/planner.py`).
@@ -159,6 +159,9 @@ Done:
 - Learning loop (`storage/store.py`, `Agent.poll_pull_requests`): PR outcomes
   are tracked; a merged PR becomes the learned fix for the incident's
   fingerprint, and recurring incidents fast-path to `already_fixed`.
+- Real validation: a `CIClient` MCP adapter, an injectable `StaticValidator`,
+  and a `ValidationRunner` that gated on real checks when adapters are present
+  and records an explicit skip row (never a silent empty pass).
 
 ## Test / lint
 

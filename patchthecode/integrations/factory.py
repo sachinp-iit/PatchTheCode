@@ -11,6 +11,7 @@ from typing import Any
 
 from patchthecode.config import MCPConnection
 from patchthecode.integrations.appinsights import AppInsightsClient
+from patchthecode.integrations.ci import CIClient
 from patchthecode.integrations.coralogix import CoralogixClient
 from patchthecode.integrations.github import GitHubClient
 from patchthecode.integrations.gitlab import GitLabClient
@@ -39,4 +40,6 @@ def adapter_for(connection: MCPConnection, mcp_client: MCPClient) -> Any:
         if "appinsights" in hint or "appinsights" in connection.name.lower():
             return AppInsightsClient(mcp_client)
         return CoralogixClient(mcp_client)
+    if kind in {"ci", "validation"}:
+        return CIClient(mcp_client)
     return mcp_client  # no dedicated facade during the skeleton phase
