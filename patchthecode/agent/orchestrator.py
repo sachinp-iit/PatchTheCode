@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 
 from patchthecode.domain.models import InvestigationReport
+from patchthecode.integrations.github import GitHubClient
 from patchthecode.investigation.analyzer import RootCauseAnalyzer
 from patchthecode.investigation.evidence import EvidenceCollector
 from patchthecode.investigation.planner import InvestigationPlanner
@@ -41,6 +42,15 @@ class Agent:
         self.analyzer = RootCauseAnalyzer(gateway=gateway)
         self.fixer = FixGenerator(gateway=gateway)
         self.validation = ValidationRunner()
+        self.github = self._find_git_connector()
+
+    def _find_git_connector(self) -> GitHubClient | None:
+        """Wrap the git-capable MCP connector, preferring kind over name."""
+        for client in self.connectors.values():
+            if getattr(getattr(client, "connection", None), "kind", None) == "git":
+                return GitHubClient(client)
+        fallback = self.connectors.get("github_mcp")
+        return GitHubClient(fallback) if fallback is not None else None
 
     async def handle(self, incident) -> InvestigationReport:
         """Run the full pipeline for a new incident, or short-circuit duplicates."""
@@ -64,14 +74,7 @@ class Agent:
 
         if report.evidence:
             report.root_cause = await self.analyzer.analyze(incident, report.evidence)
-            location = report.root_cause.location
-            if location.repository != "unknown" and location.file_path:
-                logger.debug(
-                    "resolved root cause for %s to %s@%s",
-                    incident.id,
-                    location.repository,
-                    location.file_path,
-                )
+            await self._propose_fix(report)
         else:
             report.status = "no_evidence"
 
@@ -79,3 +82,17 @@ class Agent:
         for notifier in self.notifiers:
             await notifier.send(report)
         return report
+
+    async def _propose_fix(self, report: InvestigationReport) -> None:
+        """Generate a candidate fix when the root cause resolves to a file."""
+        root_cause = report.root_cause
+        if root_cause is None or not root_cause.location.file_path:
+            return
+        snippet: str | None = None
+        if self.github is not None:
+            try:
+                snippet = await self.github.resolve_file(root_cause.location)
+            except Exception:  # noqa: BLE001 - a read failure just means no fix this round
+                logger.warning("could not fetch source for %s", root_cause.location.file_path, exc_info=True)
+        report.fix = await self.fixer.propose(root_cause.location, snippet or "", root_cause)
+        report.status = "fix_proposed" if report.fix.diff else "fix_unavailable"
