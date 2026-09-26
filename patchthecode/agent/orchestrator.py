@@ -22,6 +22,7 @@ from patchthecode.notifications.notifier import Notifier
 from patchthecode.remediation.fixer import FixGenerator
 from patchthecode.security.approver import Approver, AutoApprover, LoggingApprover
 from patchthecode.storage.store import Store
+from patchthecode.validation.checkout import CheckoutBuilder
 from patchthecode.validation.runner import ValidationRunner
 from patchthecode.validation.static import StaticValidator
 
@@ -50,6 +51,7 @@ class Agent:
         self.analyzer = RootCauseAnalyzer(gateway=gateway)
         self.fixer = FixGenerator(gateway=gateway)
         self.validation = ValidationRunner(static=static_validator)
+        self.checkout_builder = CheckoutBuilder()
         self.github = self._find_git_connector()
         self.ci = self._find_ci_connector()
         self.approver = approver or (AutoApprover() if auto_pr else LoggingApprover())
@@ -135,7 +137,10 @@ class Agent:
             report.status = "fix_unavailable"
             return
         report.status = "fix_proposed"
-        report.validation = await self.validation.validate(report.fix, self.ci_connector())
+        checkout = None
+        if self.validation.static is not None:
+            checkout = await self.checkout_builder.build(report.fix, self.github)
+        report.validation = await self.validation.validate(report.fix, self.ci_connector(), checkout=checkout)
         if not report.validation.passed:
             report.status = "validation_failed"
             return

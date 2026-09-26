@@ -162,6 +162,11 @@ Done:
 - Real validation: a `CIClient` MCP adapter, an injectable `StaticValidator`,
   and a `ValidationRunner` that gated on real checks when adapters are present
   and records an explicit skip row (never a silent empty pass).
+- Local static checks (`validation/static.py`, `validation/checkout.py`): a
+  `CheckoutBuilder` materializes the fixed tree from originals + the fix diff,
+  and `StaticValidator` lints each changed file with per-language default
+  commands (`ruff`, `eslint`, `gofmt`); tools missing from PATH surface as
+  explicit skip rows, and validation now gates on this real output.
 
 ## Test / lint
 

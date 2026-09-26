@@ -123,3 +123,34 @@ async def test_runner_strict_with_static_validator(tmp_path):
     result = await ValidationRunner(static=fail).validate(_fix(), checkout=checkout)
     assert result.passed is False
     assert result.checks[0]["status"] == "failed"
+
+
+def test_static_validator_uses_default_commands_when_none_given():
+    validator = StaticValidator(executor=_ScriptedExecutor())
+    assert validator.commands[".py"] == ["python", "-m", "ruff", "check", "{file}"]
+    assert ".go" in validator.commands
+
+
+async def test_static_validator_default_template_runs_against_patched_file(tmp_path):
+    checkout = _checkout(tmp_path)
+    seen: list[list[str]] = []
+
+    async def recording_executor(command: list[str], cwd: Path) -> CommandResult:
+        seen.append(command)
+        return CommandResult(0, "")
+
+    validator = StaticValidator(commands=None, executor=recording_executor)
+    checks = await validator.lint(_fix(), checkout=checkout)
+    assert checks[0]["status"] == "passed"
+    assert len(seen) == 1
+    assert seen[0][0] == "python"
+    assert seen[0][-1] == str(checkout / "src" / "svc.py")
+
+
+async def test_real_executor_skips_when_tool_missing(tmp_path, monkeypatch):
+    checkout = _checkout(tmp_path)
+    monkeypatch.setattr("patchthecode.validation.static.shutil.which", lambda _name: None)
+    validator = StaticValidator(commands=None, executor=None)
+    checks = await validator.lint(_fix(), checkout=checkout)
+    assert checks[0]["status"] == "skipped"
+    assert "not found on PATH" in checks[0]["reason"]

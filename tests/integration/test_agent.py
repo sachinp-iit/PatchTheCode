@@ -9,6 +9,7 @@ from patchthecode.domain.models import Incident, IncidentSource
 from patchthecode.llm.gateway import LLMGateway
 from patchthecode.notifications.notifier import LogNotifier
 from patchthecode.storage.store import Store
+from patchthecode.validation.static import CommandResult, StaticValidator
 
 
 @pytest.fixture()
@@ -248,6 +249,37 @@ async def test_agent_poll_returns_empty_without_git_connector(tmp_path):
     store = Store(tmp_path / "test.db")
     agent = Agent(gateway=LLMGateway([], timeout_seconds=5), store=store, notifiers=[])
     assert await agent.poll_pull_requests() == []
+
+
+async def test_agent_validates_fix_against_materialized_checkout(tmp_path):
+    github = _FakeMCP(
+        "github_mcp",
+        "git",
+        ["get_file_contents", "create_branch", "create_commit", "create_pull_request"],
+    )
+    connectors = {
+        "coralogix_mcp": _FakeMCP("coralogix_mcp", "observability", ["query_logs"]),
+        "github_mcp": github,
+    }
+
+    async def always_pass(command: list[str], cwd) -> CommandResult:
+        return CommandResult(0, "")
+
+    store = Store(tmp_path / "test.db")
+    validator = StaticValidator(commands={".py": ["check", "{file}"]}, executor=always_pass)
+    agent = Agent(
+        gateway=_ScriptedGateway(),
+        store=store,
+        notifiers=[],
+        connectors=connectors,
+        auto_pr=True,
+        static_validator=validator,
+    )
+    report = await agent.handle(_incident(incident_id="checkout:1", fingerprint="fp-checkout"))
+    assert report.status == "pr_opened"
+    assert report.validation is not None
+    assert report.validation.checks[0]["name"] == "lint:src/svc.py"
+    assert report.validation.checks[0]["status"] == "passed"
 
 
 async def test_agent_short_circuits_duplicates(agent):
