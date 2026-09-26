@@ -118,5 +118,17 @@ def demo() -> None:
     console.print("[green]Demo finished. Duplicates now short-circuit via the Store.[/green]")
 
 
+@app.command()
+def poll_prs() -> None:
+    """Poll open pull requests and record merged/closed outcomes in the Store."""
+    agent = _build_agent(_settings())
+    updates = asyncio.run(agent.poll_pull_requests())
+    if not updates:
+        console.print("[yellow]No open PRs whose state changed.[/yellow]")
+        return
+    for update in updates:
+        console.print(f"  {update['url']} -> [cyan]{update['state']}[/cyan] (incident {update['incident_id']})")
+
+
 if __name__ == "__main__":
     app()

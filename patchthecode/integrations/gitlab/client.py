@@ -31,6 +31,7 @@ class GitLabClient(GitHubClient):
                 "create_branch": "create_branch",
                 "create_commit": "create_commit",
                 "create_pr": "create_merge_request",
+                "get_pr": "get_merge_request",
             },
         )
 

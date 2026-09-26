@@ -37,6 +37,7 @@ class GitHubClient:
             "create_branch": "create_branch",
             "create_commit": "create_commit",
             "create_pr": "create_pull_request",
+            "get_pr": "get_pull_request",
         }
 
     async def list_tools(self) -> list[dict[str, Any]]:
@@ -96,6 +97,22 @@ class GitHubClient:
         except (TypeError, ValueError):
             number = 0
         return PullRequestResult(url=url, number=number, state="open")
+
+    async def get_pull_request(self, pr: PullRequestResult, repository: str) -> str:
+        """Poll the review state of a PR: "open", "merged", or "closed"."""
+        owner, repo_name = self._split_repo(repository)
+        result = await self.mcp.call_tool(
+            self.tool_names["get_pr"],
+            {"owner": owner, "repo": repo_name, "number": pr.number},
+        )
+        payload = result.get("structured") or {}
+        merged = payload.get("merged", False)
+        state = str(payload.get("state", "open"))
+        if merged is True or state == "merged":
+            return "merged"
+        if state == "closed":
+            return "closed"
+        return "open"
 
     async def _patched_files(self, data: PullRequestData, owner: str, repo_name: str) -> list[dict[str, str]]:
         """Build {path, content} pairs for every file touched by the fix diff."""

@@ -75,15 +75,27 @@ class Agent:
 
     async def handle(self, incident) -> InvestigationReport:
         """Run the full pipeline for a new incident, or short-circuit duplicates."""
-        dedup = False
         if self.store.has_fingerprint(incident.fingerprint):
+            known = self.store.known_fix(incident.fingerprint)
+            if known is not None:
+                fix, pr = known
+                logger.info(
+                    "recurring incident %s (fingerprint %s) already fixed by %s",
+                    incident.id,
+                    incident.fingerprint,
+                    pr.url,
+                )
+                return InvestigationReport(
+                    incident=incident,
+                    status="already_fixed",
+                    fix=fix,
+                    pull_request=pr,
+                )
             stored = self.store.get_incident(incident.id)
             if stored is not None:
-                dedup = True
                 incident = self.store.upsert_incident(incident)
-        if dedup:
-            logger.info("skipping duplicate incident %s (fingerprint %s)", incident.id, incident.fingerprint)
-            return InvestigationReport(incident=incident, status="duplicate")
+                logger.info("skipping duplicate incident %s (fingerprint %s)", incident.id, incident.fingerprint)
+                return InvestigationReport(incident=incident, status="duplicate")
 
         incident = self.store.upsert_incident(incident)
         report = InvestigationReport(incident=incident)
@@ -145,6 +157,37 @@ class Agent:
             report.status = "pr_write_failed"
             return
         report.status = "pr_opened"
+        self.store.save_pull_request(report.incident.id, root_cause.location.repository, report.pull_request)
+
+    async def poll_pull_requests(self, git_client=None) -> list[dict]:
+        """Check open PRs and record merged/closed outcomes in the store.
+
+        An accepted (merged) PR becomes the learned fix for the incident's
+        fingerprint; a recurring incident then fast-paths to `already_fixed`.
+        """
+        git = git_client or self.github
+        if git is None:
+            return []
+        updates: list[dict] = []
+        for entry in self.store.open_pull_requests():
+            try:
+                state = await git.get_pull_request(entry["pr"], entry["repository"])
+            except Exception:  # noqa: BLE001 - keep polling the rest
+                logger.exception("failed to poll PR for %s", entry["incident_id"])
+                continue
+            if state == "open":
+                continue
+            self.store.mark_pull_request(entry["incident_id"], state)
+            updates.append(
+                {
+                    "incident_id": entry["incident_id"],
+                    "repository": entry["repository"],
+                    "url": entry["pr"].url,
+                    "state": state,
+                }
+            )
+            logger.info("PR %s for incident %s is now %s", entry["pr"].url, entry["incident_id"], state)
+        return updates
 
     def ci_connector(self):
         """Return the CI-MCP connector, if any, for validation checks."""

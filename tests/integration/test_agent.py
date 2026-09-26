@@ -64,9 +64,10 @@ class _ScriptedGateway:
 
 
 class _FakeMCP:
-    def __init__(self, name: str, kind: str, tools: list[str]) -> None:
+    def __init__(self, name: str, kind: str, tools: list[str], pull_state: dict | None = None) -> None:
         self.connection = MCPConnection(name=name, kind=kind, transport="stdio", command="npx")
         self.tools = tools
+        self.pull_state = pull_state
         self.calls: list[tuple[str, dict]] = []
 
     async def list_tools(self) -> list[dict]:
@@ -88,6 +89,8 @@ class _FakeMCP:
             return {"content": "PR created", "structured": {"url": "https://github.com/payments/payments/pull/1", "number": 1}}
         if name == "create_merge_request":
             return {"content": "MR created", "structured": {"url": "https://gitlab.com/groups/payments/-/merge_requests/7", "number": 7}}
+        if name == "get_pull_request":
+            return {"content": "PR state", "structured": self.pull_state or {"state": "open"}}
         return {"content": f"result of {name}", "structured": {}}
 
 
@@ -198,6 +201,53 @@ async def test_agent_fix_unavailable_without_git_connector(tmp_path):
     assert report.status == "fix_unavailable"
     assert report.fix is not None
     assert report.fix.summary == "Code snippet unavailable; fix not generated"
+
+
+async def test_agent_learning_loop_replays_accepted_fix(tmp_path):
+    merged = _FakeMCP(
+        "github_mcp",
+        "git",
+        ["get_file_contents", "create_branch", "create_commit", "create_pull_request", "get_pull_request"],
+        pull_state={"state": "closed", "merged": True},
+    )
+    connectors = {
+        "coralogix_mcp": _FakeMCP("coralogix_mcp", "observability", ["query_logs"]),
+        "github_mcp": merged,
+    }
+    store = Store(tmp_path / "test.db")
+    agent = Agent(
+        gateway=_ScriptedGateway(),
+        store=store,
+        notifiers=[],
+        connectors=connectors,
+        auto_pr=True,
+    )
+
+    first = await agent.handle(_incident(incident_id="learn:1", fingerprint="fp-learn"))
+    assert first.status == "pr_opened"
+
+    updates = await agent.poll_pull_requests()
+    assert updates == [
+        {
+            "incident_id": "learn:1",
+            "repository": "payments",
+            "url": "https://github.com/payments/payments/pull/1",
+            "state": "merged",
+        }
+    ]
+
+    recurring = await agent.handle(_incident(incident_id="learn:2", fingerprint="fp-learn"))
+    assert recurring.status == "already_fixed"
+    assert recurring.fix is not None
+    assert recurring.fix.summary == "guard the provider"
+    assert recurring.pull_request is not None
+    assert recurring.pull_request.state == "merged"
+
+
+async def test_agent_poll_returns_empty_without_git_connector(tmp_path):
+    store = Store(tmp_path / "test.db")
+    agent = Agent(gateway=LLMGateway([], timeout_seconds=5), store=store, notifiers=[])
+    assert await agent.poll_pull_requests() == []
 
 
 async def test_agent_short_circuits_duplicates(agent):

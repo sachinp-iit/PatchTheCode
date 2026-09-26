@@ -144,8 +144,9 @@ prompts. Do not bypass this path.
 1. **MCP tool names**: run `inspect-mcp` against real Coralogix / Sentry /
    App Insights / GitHub / GitLab MCP servers; align the default tool-name
    maps in each `integrations/*/client.py`.
-2. **Learning loop**: track PR merged/closed in the Store; replay accepted
-   fixes in tests.
+2. **CI validation**: run local test/static-check commands for the repo's
+   language (a `ci/` adapter) so `validation` produces real evidence instead
+   of passing when no checks are configured.
 
 Done:
 - Evidence planner (LLM-driven, `investigation/planner.py`).
@@ -155,6 +156,9 @@ Done:
 - Pluggable adapters: Sentry, Application Insights, and GitLab clients plus
   `integrations.factory.adapter_for` — selection is by MCP `kind` + optional
   `system` hint, never by connector name.
+- Learning loop (`storage/store.py`, `Agent.poll_pull_requests`): PR outcomes
+  are tracked; a merged PR becomes the learned fix for the incident's
+  fingerprint, and recurring incidents fast-path to `already_fixed`.
 
 ## Test / lint
 

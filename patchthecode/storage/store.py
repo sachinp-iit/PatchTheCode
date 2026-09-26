@@ -1,15 +1,16 @@
 """Local SQLite storage of incidents, investigations, and fix outcomes.
 
 Powers deduplication (incidents by fingerprint), investigation history,
-and the Phase-3 learning loop (accepted/rejected fixes).
+and the learning loop (tracking accepted/rejected fixes via PR outcomes).
 """
 
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
-from patchthecode.domain.models import Incident, InvestigationReport
+from patchthecode.domain.models import FixProposal, Incident, InvestigationReport, PullRequestResult
 
 
 class Store:
@@ -36,6 +37,18 @@ class Store:
                 status TEXT NOT NULL,
                 report TEXT NOT NULL,
                 created_at TEXT NOT NULL
+            )
+            """
+        )
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pull_requests (
+                incident_id TEXT PRIMARY KEY,
+                repository TEXT NOT NULL,
+                url TEXT NOT NULL,
+                number INTEGER NOT NULL,
+                state TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             )
             """
         )
@@ -90,6 +103,73 @@ class Store:
             ),
         )
         self._conn.commit()
+
+    # --- learning loop: PR outcomes ---
+
+    def save_pull_request(self, incident_id: str, repository: str, pr: PullRequestResult) -> None:
+        """Persist a PR associated with an incident (upsert by incident)."""
+        self._conn.execute(
+            "INSERT OR REPLACE INTO pull_requests (incident_id, repository, url, number, state, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                incident_id,
+                repository,
+                pr.url,
+                pr.number,
+                pr.state,
+                datetime.utcnow().isoformat(),
+            ),
+        )
+        self._conn.commit()
+
+    def open_pull_requests(self) -> list[dict]:
+        """Return PRs still awaiting review, keyed by incident."""
+        rows = self._conn.execute(
+            "SELECT incident_id, repository, url, number FROM pull_requests WHERE state = 'open'"
+        ).fetchall()
+        return [
+            {
+                "incident_id": row[0],
+                "repository": row[1],
+                "pr": PullRequestResult(url=row[2], number=row[3], state="open"),
+            }
+            for row in rows
+        ]
+
+    def mark_pull_request(self, incident_id: str, state: str) -> None:
+        """Record the reviewed outcome of a PR (merged/closed)."""
+        self._conn.execute(
+            "UPDATE pull_requests SET state = ?, updated_at = ? WHERE incident_id = ?",
+            (state, datetime.utcnow().isoformat(), incident_id),
+        )
+        self._conn.commit()
+
+    def known_fix(self, fingerprint: str) -> tuple[FixProposal, PullRequestResult] | None:
+        """Return the merged fix previously accepted for a fingerprint, if any.
+
+        This is the learning fast-path: a recurring incident whose last fix
+        landed as a merged PR is surfaced as `already_fixed` instead of being
+        re-investigated from scratch.
+        """
+        row = self._conn.execute(
+            """
+            SELECT r.report, p.url, p.number
+            FROM reports r
+            JOIN incidents i ON i.id = r.incident_id
+            JOIN pull_requests p ON p.incident_id = r.incident_id
+            WHERE i.fingerprint = ? AND p.state = 'merged'
+              AND json_extract(r.report, '$.fix') IS NOT NULL
+            ORDER BY p.updated_at DESC
+            LIMIT 1
+            """,
+            (fingerprint,),
+        ).fetchone()
+        if row is None:
+            return None
+        report = InvestigationReport.model_validate_json(row[0])
+        pr = PullRequestResult(url=row[1], number=row[2], state="merged")
+        assert report.fix is not None
+        return report.fix, pr
 
     def close(self) -> None:
         self._conn.close()
