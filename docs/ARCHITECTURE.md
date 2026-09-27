@@ -144,8 +144,8 @@ prompts. Do not bypass this path.
 1. **Live alignment tuning**: run `inspect-mcp --dump-to data/inspect` against
    real Coralogix / Sentry / App Insights credentials and tighten `TOOL_SPECS`
    candidates where servers advertise extra variants.
-2. **Operator surfaces**: CLI commands to list open PRs and rejected fixes so
-   teams can see the pending review and learning queues at a glance.
+2. **Debugging playbooks**: turn learned fixes and rejection history into
+   reusable playbooks per fingerprint so recurring incidents resolve faster.
 
 Done:
 - Evidence planner (LLM-driven, `investigation/planner.py`).
@@ -196,6 +196,10 @@ Done:
   closed without merge is recorded as a rejection for its fingerprint; the
   next fix generation for that fingerprint feeds the rejected summaries and
   diffs into the prompt so the model proposes a different approach.
+- Operator surfaces (`cli.py`, `store.summary`): `list-prs` shows the review
+  queue, `rejections` shows the learning queue (fingerprint / incident /
+  summary), and `status` prints operating totals — incidents, investigations,
+  open PRs, merged fixes, and rejections at a glance.
 
 ## Test / lint
 

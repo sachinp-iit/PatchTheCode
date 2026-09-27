@@ -220,6 +220,38 @@ class Store:
             for row in rows
         ]
 
+    def all_rejections(self) -> list[dict]:
+        """Every recorded rejection across fingerprints, newest first."""
+        rows = self._conn.execute(
+            "SELECT fingerprint, incident_id, summary, diff, reason, created_at FROM rejections"
+            " ORDER BY created_at DESC"
+        ).fetchall()
+        return [
+            {
+                "fingerprint": row[0],
+                "incident_id": row[1],
+                "summary": row[2],
+                "diff": row[3],
+                "reason": row[4],
+                "created_at": row[5],
+            }
+            for row in rows
+        ]
+
+    def summary(self) -> dict[str, int]:
+        """Operating totals: what the store knows at a glance."""
+        return {
+            "incidents": self._conn.execute("SELECT COUNT(*) FROM incidents").fetchone()[0],
+            "investigations": self._conn.execute("SELECT COUNT(*) FROM reports").fetchone()[0],
+            "open_prs": self._conn.execute(
+                "SELECT COUNT(*) FROM pull_requests WHERE state = 'open'"
+            ).fetchone()[0],
+            "merged_fixes": self._conn.execute(
+                "SELECT COUNT(*) FROM pull_requests WHERE state = 'merged'"
+            ).fetchone()[0],
+            "rejections": self._conn.execute("SELECT COUNT(*) FROM rejections").fetchone()[0],
+        }
+
     def known_fix(self, fingerprint: str) -> tuple[FixProposal, PullRequestResult] | None:
         """Return the merged fix previously accepted for a fingerprint, if any.
 

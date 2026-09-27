@@ -132,3 +132,31 @@ def test_store_merge_does_not_record_rejection(tmp_path):
     )
     store.mark_pull_request(incident.id, "merged")
     assert store.has_rejections("fp-merge-ok") is False
+
+
+def test_store_all_rejections_and_summary(tmp_path):
+    store = Store(tmp_path / "s.db")
+    incident = _incident(fingerprint="fp-all")
+    store.upsert_incident(incident)
+    store.save_report(InvestigationReport(incident=incident, status="pr_opened", fix=_fix()))
+    store.save_pull_request(
+        incident.id,
+        "acme/pay",
+        PullRequestResult(url="https://github.com/acme/pay/pull/7", number=7, state="open"),
+    )
+
+    assert store.summary()["open_prs"] == 1
+    store.mark_pull_request(incident.id, "closed")
+
+    rows = store.all_rejections()
+    assert len(rows) == 1
+    assert rows[0]["fingerprint"] == "fp-all"
+    assert rows[0]["incident_id"] == incident.id
+    assert rows[0]["summary"] == "guard the provider"
+
+    counts = store.summary()
+    assert counts["incidents"] == 1
+    assert counts["investigations"] == 1
+    assert counts["open_prs"] == 0
+    assert counts["merged_fixes"] == 0
+    assert counts["rejections"] == 1

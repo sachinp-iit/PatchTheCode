@@ -5,6 +5,11 @@ Currently supports:
     each aligns to the tool maps PatchTheCode expects (great for learning the
     real Coralogix / GitHub / Sentry tool names and aligning your server).
   - `replay`: feed a saved incident JSON through the investigation loop.
+  - `demo`: run the pipeline against a synthetic incident (no MCP servers).
+  - `poll-prs`: record merged/closed outcomes for open pull requests.
+  - `list-prs`: show the open pull requests awaiting review.
+  - `rejections`: show fixes reviewers rejected (the learning queue).
+  - `status`: operating totals from the store.
 """
 
 from __future__ import annotations
@@ -177,6 +182,47 @@ def poll_prs() -> None:
         return
     for update in updates:
         console.print(f"  {update['url']} -> [cyan]{update['state']}[/cyan] (incident {update['incident_id']})")
+
+
+@app.command()
+def list_prs() -> None:
+    """List the open pull requests awaiting review."""
+    agent = _build_agent(_settings())
+    entries = agent.store.open_pull_requests()
+    if not entries:
+        console.print("[yellow]No open pull requests.[/yellow]")
+        return
+    for entry in entries:
+        pr = entry["pr"]
+        console.print(f"  {pr.url} (#{pr.number}) incident={entry['incident_id']} repo={entry['repository']}")
+
+
+@app.command()
+def rejections() -> None:
+    """List fixes reviewers rejected, to steer future attempts."""
+    agent = _build_agent(_settings())
+    rows = agent.store.all_rejections()
+    if not rows:
+        console.print("[yellow]No rejected fixes recorded.[/yellow]")
+        return
+    for row in rows:
+        summary = row["summary"]
+        if len(summary) > 84:
+            summary = summary[:81] + "..."
+        console.print(
+            f"  [{row['created_at']}] incident={row['incident_id']} reason={row['reason']}"
+        )
+        console.print(f"      fingerprint={row['fingerprint']}")
+        console.print(f"      {summary}")
+
+
+@app.command()
+def status() -> None:
+    """Operating totals from the store."""
+    agent = _build_agent(_settings())
+    counts = agent.store.summary()
+    for key, value in counts.items():
+        console.print(f"  {key}: [cyan]{value}[/cyan]")
 
 
 if __name__ == "__main__":
