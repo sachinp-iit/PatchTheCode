@@ -113,7 +113,10 @@ class InvestigationPlanner:
                 EvidencePlanItem(
                     connector="coralogix_mcp",
                     tool="query_logs",
-                    arguments=dict(window),
+                    arguments={
+                        "query": incident.title or incident.description or "*",
+                        "time_range": dict(window),
+                    },
                     purpose="logs around the incident window for the affected service",
                 )
             )
@@ -121,7 +124,7 @@ class InvestigationPlanner:
                 EvidencePlanItem(
                     connector="coralogix_mcp",
                     tool="list_deployments",
-                    arguments=dict(window),
+                    arguments={"service": service, "time_range": dict(window)},
                     purpose="deployments that could have introduced the incident",
                 )
             )
@@ -129,7 +132,7 @@ class InvestigationPlanner:
             EvidencePlanItem(
                 connector="github_mcp",
                 tool="search_repository",
-                arguments={"service": service or incident.fingerprint},
+                arguments={"query": service or incident.fingerprint},
                 purpose="locate the repository for the affected service",
             )
         )

@@ -43,6 +43,22 @@ class NormalizedOccurrence:
         self.service = service
         self.raw = raw
 
+    def to_summary(self, fingerprint_value: str | None = None) -> dict[str, Any]:
+        """A redactable, LLM-friendly projection of this occurrence."""
+        return {
+            "system": self.system,
+            "kind": self.kind,
+            "severity": self.severity.value,
+            "title": self.title,
+            "description": self.description,
+            "exception_type": self.exception_type,
+            "message": self.message,
+            "stack_trace": self.stack_trace,
+            "service": self.service,
+            "timestamp": self.timestamp.isoformat(),
+            "fingerprint": fingerprint_value,
+        }
+
 
 class OccurrenceNormalizer:
     """Base class for integration normalizers.

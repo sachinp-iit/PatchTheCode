@@ -77,7 +77,14 @@ class _FakeMCP:
     async def call_tool(self, name: str, arguments: dict | None = None) -> dict:
         self.calls.append((name, arguments or {}))
         if name == "query_logs":
-            return {"content": "NPE log entry", "structured": {"hits": 1}}
+            return {
+                "content": "NPE log entry",
+                "structured": {
+                    "hits": [
+                        {"text": "NullPointerException in process", "applicationName": "svc", "severity": 5}
+                    ]
+                },
+            }
         if name == "get_content":
             return {"content": "class Svc { def process(self): return None }", "structured": {}}
         if name == "get_file_contents":

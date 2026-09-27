@@ -141,12 +141,11 @@ prompts. Do not bypass this path.
 
 ## Where to build next (priority)
 
-1. **Wire observability adapters into the pipeline**: the Coralogix / Sentry /
-   App Insights facades exist and normalize hits, but the detector still runs
-   against the raw connector — execute the plan steps against the adapted
-   client so evidence is normalized and deduplicated at the source.
-2. **Notifications**: Slack / Teams send a summary report; add review-request
+1. **Notifications**: Slack / Teams send a summary report; add review-request
    prompts when a PR is blocked on approval.
+2. **Live alignment tuning**: run `inspect-mcp --dump-to data/inspect` against
+   real Coralogix / Sentry / App Insights credentials and tighten `TOOL_SPECS`
+   candidates where servers advertise extra variants.
 
 Done:
 - Evidence planner (LLM-driven, `investigation/planner.py`).
@@ -173,6 +172,13 @@ Done:
   `tool_names` overrides win. `inspect-mcp --dump-to data/inspect` reports
   per-action aligned/fallback status and writes JSON per connector. To tune a
   real server, add candidates to `TOOL_SPECS` or pass `tool_names` overrides.
+- Evidence through adapted facades (`investigation/evidence.py`): plan steps
+  targeting an observability adapter run through `execute(action, arguments)`
+  (with `UnknownActionError` fallback to the raw connector), so hits come back
+  as normalized occurrences collapsed by fingerprint at the source; every
+  Evidence payload is redacted before it leaves the collector. Steps that
+  cannot be normalized (source fetch, deployments, repo search) still
+  contribute their raw payload.
 
 ## Test / lint
 

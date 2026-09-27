@@ -15,6 +15,7 @@ from typing import Any
 
 from patchthecode.detection.normalizer import NormalizedOccurrence, OccurrenceNormalizer
 from patchthecode.domain import Severity
+from patchthecode.integrations.errors import UnknownActionError
 from patchthecode.integrations.names import align_tools
 from patchthecode.mcp.client import MCPClient
 
@@ -76,3 +77,12 @@ class CoralogixClient:
             names["list_deployments"], {"service": service, "time_range": time_range}
         )
         return result["structured"].get("deployments", [])
+
+    async def execute(self, action: str, arguments: dict[str, Any]) -> list[NormalizedOccurrence]:
+        """Run a semantic plan action, returning normalized occurrences."""
+        if action == "query_logs":
+            return await self.query_logs(
+                query=str(arguments.get("query", "*")),
+                time_range=arguments.get("time_range") or {},
+            )
+        raise UnknownActionError(f"coralogix facade has no normalized action {action!r}")

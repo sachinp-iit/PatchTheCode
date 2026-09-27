@@ -13,6 +13,7 @@ from typing import Any
 
 from patchthecode.detection.normalizer import NormalizedOccurrence, OccurrenceNormalizer
 from patchthecode.domain import Severity
+from patchthecode.integrations.errors import UnknownActionError
 from patchthecode.integrations.names import align_tools
 from patchthecode.mcp.client import MCPClient
 
@@ -79,3 +80,11 @@ class SentryClient:
         result = await self.mcp.call_tool(names["list_events"], {"issue_id": issue_id})
         hits = result["structured"].get("events", [])
         return [self.normalizer.normalize(hit) for hit in hits]
+
+    async def execute(self, action: str, arguments: dict[str, Any]) -> list[NormalizedOccurrence]:
+        """Run a semantic plan action, returning normalized occurrences."""
+        if action == "search_issues":
+            return await self.search_issues(query=str(arguments.get("query", "")))
+        if action == "list_events":
+            return await self.list_events(issue_id=str(arguments.get("issue_id", "")))
+        raise UnknownActionError(f"sentry facade has no normalized action {action!r}")

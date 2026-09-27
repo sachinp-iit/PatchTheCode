@@ -14,6 +14,7 @@ from typing import Any
 
 from patchthecode.detection.normalizer import NormalizedOccurrence, OccurrenceNormalizer
 from patchthecode.domain import Severity
+from patchthecode.integrations.errors import UnknownActionError
 from patchthecode.integrations.names import align_tools
 from patchthecode.mcp.client import MCPClient
 
@@ -94,3 +95,13 @@ class AppInsightsClient:
         result = await self.mcp.call_tool(names["list_exceptions"], arguments)
         rows = result["structured"].get("events", [])
         return [self.normalizer.normalize(row) for row in rows]
+
+    async def execute(self, action: str, arguments: dict[str, Any]) -> list[NormalizedOccurrence]:
+        """Run a semantic plan action, returning normalized occurrences."""
+        if action == "query":
+            return await self.query(query=str(arguments.get("query", "")))
+        if action == "list_exceptions":
+            return await self.list_exceptions(
+                operation_id=arguments.get("operation_id") or arguments.get("operationId")
+            )
+        raise UnknownActionError(f"appinsights facade has no normalized action {action!r}")
