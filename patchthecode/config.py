@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     mcp_config: Path | None = Field(default=None, alias="PATCHTHECODE_MCP_CONFIG")
     store_path: Path = Field(default=Path("data/patchthecode.db"), alias="PATCHTHECODE_STORE_PATH")
 
+    watch_inbox: Path = Field(default=Path("data/inbox"), alias="PATCHTHECODE_WATCH_INBOX")
+    watch_interval_seconds: int = Field(default=30, alias="PATCHTHECODE_WATCH_INTERVAL_SECONDS")
+
     redact_fields: str = Field(
         default="Authorization,Cookie,password,secret,token,api_key",
         alias="PATCHTHECODE_REDACT_FIELDS",

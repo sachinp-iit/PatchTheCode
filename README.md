@@ -348,6 +348,7 @@ The initial focus is:
 - [x] Learning from accepted/rejected fixes
 - [x] Debugging playbooks
 - [x] Strategy learning from merged fixes
+- [x] Autonomous watch mode
 
 Items marked as incomplete are part of the development roadmap and should not be interpreted as currently implemented functionality.
 
@@ -456,7 +457,16 @@ A runnable skeleton is in place for the vertical slice. See [docs/ARCHITECTURE.m
 pip install -e ".[dev]"
 pytest                      # unit + integration tests
 patchthecode demo           # run the pipeline on a synthetic incident
+patchthecode watch --once    # investigate everything waiting in the inbox
+patchthecode watch           # keep watching (Ctrl-C to stop)
 ```
+
+In watch mode, drop incident JSON files (the same `Incident` payload `replay`
+accepts) into the inbox directory — `data/inbox` by default, or
+`PATCHTHECODE_WATCH_INBOX`. Each cycle the loop investigates new incidents,
+refreshes open pull-request outcomes, and moves finished payloads to
+`data/inbox/processed/`. A malformed file is retried on the next poll, and one
+failing incident never stops the loop.
 
 ---
 

@@ -144,9 +144,8 @@ prompts. Do not bypass this path.
 1. **Live alignment tuning**: run `inspect-mcp --dump-to data/inspect` against
    real Coralogix / Sentry / App Insights credentials and tighten `TOOL_SPECS`
    candidates where servers advertise extra variants.
-2. **Autonomous operation**: a long-running mode that ingests new incidents
-   (poll or webhook) and drives them through the loop without a CLI call per
-   incident.
+2. **More incident feeds**: a webhook receiver and Sentry/Coralogix issue
+   polling so alerting systems push into the watch loop directly.
 
 Done:
 - Evidence planner (LLM-driven, `investigation/planner.py`).
@@ -210,6 +209,15 @@ Done:
   fleet-wide ranking, then hands it to the planner as
   `PREVIOUSLY SUCCESSFUL EVIDENCE` so investigations lean on evidence that has
   already produced accepted fixes.
+- Autonomous operation (`agent/sources.py`, `agent/watch.py`, `cli watch`):
+  an `IncidentFeed` protocol (`fetch` / `acknowledge`) plus `FileInbox`, which
+  reads `Incident` JSON files from a directory and moves acknowledged payloads
+  to `processed/` (unreadable files are retried, not dropped). `WatchLoop` polls
+  the feed, runs each new incident through the agent, refreshes open PR
+  outcomes so merge/rejection signals stay fresh, and survives a failing feed,
+  a failing incident, or a failing PR poll. `patchthecode watch
+  [--inbox/--interval/--once/--cycles/--no-pr-poll]` exposes it, configured by
+  `PATCHTHECODE_WATCH_INBOX` and `PATCHTHECODE_WATCH_INTERVAL_SECONDS`.
 - Operator surfaces (`cli.py`, `store.summary`): `list-prs` shows the review
   queue, `rejections` shows the learning queue (fingerprint / incident /
   summary), and `status` prints operating totals — incidents, investigations,

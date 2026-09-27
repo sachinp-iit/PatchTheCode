@@ -7,6 +7,8 @@ Currently supports:
   - `replay`: feed a saved incident JSON through the investigation loop.
   - `demo`: run the pipeline against a synthetic incident (no MCP servers).
   - `poll-prs`: record merged/closed outcomes for open pull requests.
+  - `watch`: keep running, pick up incident JSON files from an inbox
+    directory, and investigate each one without a CLI call per incident.
   - `list-prs`: show the open pull requests awaiting review.
   - `rejections`: show fixes reviewers rejected (the learning queue).
   - `status`: operating totals from the store.
@@ -26,9 +28,11 @@ from rich.console import Console
 from rich.pretty import pprint
 
 from patchthecode.agent.orchestrator import Agent
+from patchthecode.agent.sources import FileInbox
+from patchthecode.agent.watch import WatchLoop
 from patchthecode.config import Settings
 from patchthecode.domain import Severity
-from patchthecode.domain.models import Incident, IncidentSource
+from patchthecode.domain.models import Incident, IncidentSource, InvestigationReport
 from patchthecode.integrations.factory import adapter_for, hint_for
 from patchthecode.integrations.names import report_for
 from patchthecode.llm.gateway import LLMGateway
@@ -184,6 +188,71 @@ def poll_prs() -> None:
         return
     for update in updates:
         console.print(f"  {update['url']} -> [cyan]{update['state']}[/cyan] (incident {update['incident_id']})")
+
+
+@app.command()
+def watch(
+    inbox: Annotated[
+        Path | None,
+        typer.Option("--inbox", help="Directory watched for incident JSON files"),
+    ] = None,
+    interval: Annotated[
+        int | None,
+        typer.Option("--interval", help="Seconds between polls"),
+    ] = None,
+    once: Annotated[
+        bool, typer.Option("--once", help="Run a single cycle and exit")
+    ] = False,
+    cycles: Annotated[
+        int | None, typer.Option("--cycles", help="Stop after N cycles (default: run until Ctrl-C)")
+    ] = None,
+    no_pr_poll: Annotated[
+        bool, typer.Option("--no-pr-poll", help="Do not refresh pull-request outcomes each cycle")
+    ] = False,
+) -> None:
+    """Watch an incident inbox and investigate new incidents automatically."""
+    settings = _settings()
+    inbox_dir = inbox or settings.watch_inbox
+    interval_seconds = interval if interval is not None else settings.watch_interval_seconds
+    max_cycles = 1 if once else cycles
+    agent = _build_agent(settings)
+    feed = FileInbox(inbox_dir)
+    console.print(
+        f"[cyan]Watching {inbox_dir} every {interval_seconds}s"
+        + (" (single cycle)" if max_cycles == 1 else "")
+        + ". Drop incident JSON files there; Ctrl-C to stop.[/cyan]"
+    )
+
+    def _on_cycle(cycle: int) -> None:
+        console.print(f"[dim]cycle {cycle}[/dim]")
+
+    def _on_report(report: InvestigationReport) -> None:
+        console.print(
+            f"  {report.incident.id} [{report.incident.fingerprint}] -> [green]{report.status}[/green]"
+        )
+
+    loop = WatchLoop(
+        agent=agent,
+        feed=feed,
+        interval_seconds=interval_seconds,
+        max_cycles=max_cycles,
+        poll_pull_requests=not no_pr_poll,
+        on_cycle=_on_cycle,
+        on_report=_on_report,
+    )
+    try:
+        reports = asyncio.run(loop.run())
+    except KeyboardInterrupt:  # pragma: no cover - interactive stop
+        console.print("[yellow]Watch stopped.[/yellow]")
+        return
+    if reports:
+        by_status: dict[str, int] = {}
+        for report in reports:
+            by_status[report.status] = by_status.get(report.status, 0) + 1
+        summary = ", ".join(f"{status}={count}" for status, count in sorted(by_status.items()))
+        console.print(f"[green]Watch finished {len(reports)} investigation(s): {summary}[/green]")
+    else:
+        console.print("[yellow]No new incidents found.[/yellow]")
 
 
 @app.command()
