@@ -70,8 +70,8 @@ def test_every_client_action_has_a_spec_entry():
         ("coralogix", CoralogixClient, ["query_logs", "list_deployments"]),
         ("appinsights", AppInsightsClient, ["query", "list_exceptions"]),
         ("ci", CIClient, ["create_check_run", "get_check_run"]),
-        ("slack", SlackClient, ["send_message"]),
-        ("teams", TeamsClient, ["send_message"]),
+        ("slack", SlackClient, ["send_message", "read_messages"]),
+        ("teams", TeamsClient, ["send_message", "read_messages"]),
     ]
     for system, _client_type, actions in pairs:
         spec = TOOL_SPECS[system]

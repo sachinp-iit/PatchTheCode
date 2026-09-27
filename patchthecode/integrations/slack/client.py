@@ -41,3 +41,31 @@ class SlackClient:
             {"channel": channel or "#incidents", "text": text},
         )
         return True
+
+    async def read_messages(self, channel: str, marker: str | None = None) -> list[dict[str, Any]]:
+        """Return recent channel messages, optionally filtered to a marker substring.
+
+        Each message maps to ``{ts, text, reactions}`` where ``reactions`` is a
+        list of ``{"name": ...}``; the caller stays transport-agnostic.
+        """
+        names = await self._tool_names()
+        result = await self.mcp.call_tool(names["read_messages"], {"channel": channel or "#incidents"})
+        structured = result.get("structured") or {}
+        raw = structured.get("messages") or structured.get("messages_list") or []
+        messages = [self._normalize_message(message) for message in raw if isinstance(message, dict)]
+        if marker:
+            messages = [message for message in messages if marker in (message.get("text") or "")]
+        return messages
+
+    @staticmethod
+    def _normalize_message(message: dict[str, Any]) -> dict[str, Any]:
+        reactions = [
+            {"name": reaction.get("name") or reaction.get("emoji") or reaction.get("reaction") or ""}
+            for reaction in (message.get("reactions") or [])
+            if isinstance(reaction, dict)
+        ]
+        return {
+            "ts": message.get("ts") or message.get("id") or message.get("message_ts"),
+            "text": message.get("text") or message.get("content") or message.get("text_content") or "",
+            "reactions": reactions,
+        }

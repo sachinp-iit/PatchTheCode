@@ -27,6 +27,7 @@ from patchthecode.integrations.names import report_for
 from patchthecode.llm.gateway import LLMGateway
 from patchthecode.mcp.registry import ConnectorRegistry
 from patchthecode.notifications.notifier import build_notifiers
+from patchthecode.security.approver import ChannelApprover
 from patchthecode.storage.store import Store
 
 app = typer.Typer(help="PatchTheCode: AI Production Engineer over MCP-connected systems.")
@@ -52,7 +53,30 @@ def _build_agent(settings: Settings) -> Agent:
         notifiers=build_notifiers(connectors),
         connectors=connectors,
         auto_pr=settings.auto_pr,
+        approver=_channel_approver(settings, connectors),
     )
+
+
+def _channel_approver(settings: Settings, connectors: dict):
+    """An interactive ChannelApprover when a channel is configured (and PRs are not auto-approved)."""
+    if settings.auto_pr or not settings.approval_channel:
+        return None
+    for client in connectors.values():
+        connection = getattr(client, "connection", None)
+        if connection is None or getattr(connection, "kind", "") != "communication":
+            continue
+        try:
+            facade = adapter_for(connection, client)
+        except Exception:  # noqa: BLE001 - a misconfigured connector just gets no approver
+            continue
+        if getattr(facade, "send_message", None) is not None and getattr(facade, "read_messages", None) is not None:
+            console.print(f"[cyan]Approval requests -> {getattr(facade, 'system', 'chat')} {settings.approval_channel}[/cyan]")
+            return ChannelApprover(
+                facade,
+                channel=settings.approval_channel,
+                timeout_seconds=settings.approval_timeout_seconds,
+            )
+    return None
 
 
 @app.command()

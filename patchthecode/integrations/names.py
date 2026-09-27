@@ -52,9 +52,11 @@ TOOL_SPECS: dict[str, ToolSpec] = {
     },
     "slack": {
         "send_message": ["chat_postMessage", "chat_post_message", "post_message"],
+        "read_messages": ["conversations_history", "lists_messages", "get_messages", "list_messages"],
     },
     "teams": {
         "send_message": ["send_message", "post_message", "chat_postMessage"],
+        "read_messages": ["list_messages", "get_messages", "list_chat_messages"],
     },
 }
 

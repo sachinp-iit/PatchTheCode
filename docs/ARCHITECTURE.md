@@ -144,9 +144,9 @@ prompts. Do not bypass this path.
 1. **Live alignment tuning**: run `inspect-mcp --dump-to data/inspect` against
    real Coralogix / Sentry / App Insights credentials and tighten `TOOL_SPECS`
    candidates where servers advertise extra variants.
-2. **Interactive approval flow**: the review-request prompt is send-only today;
-   give reviewers a way to reply approve/reject that feeds the `Approver`
-   instead of the default `LoggingApprover`.
+2. **Rejection feedback loop**: persist reviewer rejections in the store and
+   feed them back so the next fix for the same fingerprint avoids the
+   rejected approach.
 
 Done:
 - Evidence planner (LLM-driven, `investigation/planner.py`).
@@ -186,6 +186,13 @@ Done:
   a rendered investigation summary after each run and a review-request prompt
   when a PR is blocked on approval; channel failures never abort the run and
   the `LogNotifier` is always present.
+- Interactive approval (`security/approver.py`): a `ChannelApprover` posts
+  approval requests tagged with a correlation code and resolves approve/reject
+  from channel replies or reactions (`✅`/`❌`, "approve"/"reject" text),
+  blocking on timeout; Slack / Teams facades gained a `read_messages` seam
+  with runtime-aligned tool names. Opt in via `PATCHTHECODE_APPROVAL_CHANNEL`.
+  Approvers that surface their own prompt (`prompts_itself`) skip the
+  duplicate review-request notification.
 
 ## Test / lint
 

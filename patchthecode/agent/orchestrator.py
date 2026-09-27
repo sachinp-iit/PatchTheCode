@@ -157,7 +157,8 @@ class Agent:
             },
         ):
             report.status = "pr_pending_approval"
-            await self._notify_review(report)
+            if not getattr(self.approver, "prompts_itself", False):
+                await self._notify_review(report)
             return
         try:
             report.pull_request = await self.github.open_pull_request(self._build_pr_data(report))

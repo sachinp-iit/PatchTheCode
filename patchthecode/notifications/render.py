@@ -56,3 +56,29 @@ def render_review_request(report: InvestigationReport) -> str:
     else:
         lines.append(f"diff staged on branch `{head}` — approval will open the pull request")
     return "\n".join(lines)
+
+
+def render_approval_request(
+    action: str,
+    payload: dict,
+    code: str,
+    timeout_seconds: int = 300,
+) -> str:
+    """A chat prompt asking a human to approve/reject one write action.
+
+    Embeds a correlation ``code`` the reviewer can quote; the interactive
+    approver matches replies or reactions that carry it.
+    """
+    lines = [
+        f"[PatchTheCode] Approval required for `{action}`.",
+        f"request: `{code}`",
+    ]
+    for key in ("repository", "head_branch", "base_branch"):
+        value = payload.get(key)
+        if value:
+            lines.append(f"{key}: `{value}`")
+    files = payload.get("files")
+    if files:
+        lines.append(f"files: {', '.join(str(f) for f in files)}")
+    lines.append(f"Reply \u2705 `approve` or \u274c `reject` within {timeout_seconds} seconds.")
+    return "\n".join(lines)

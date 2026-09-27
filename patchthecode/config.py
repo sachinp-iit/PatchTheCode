@@ -44,6 +44,9 @@ class Settings(BaseSettings):
 
     auto_pr: bool = Field(default=False, alias="PATCHTHECODE_AUTO_PR")
 
+    approval_channel: str = Field(default="", alias="PATCHTHECODE_APPROVAL_CHANNEL")
+    approval_timeout_seconds: int = Field(default=300, alias="PATCHTHECODE_APPROVAL_TIMEOUT_SECONDS")
+
     mcp_config: Path | None = Field(default=None, alias="PATCHTHECODE_MCP_CONFIG")
     store_path: Path = Field(default=Path("data/patchthecode.db"), alias="PATCHTHECODE_STORE_PATH")
 

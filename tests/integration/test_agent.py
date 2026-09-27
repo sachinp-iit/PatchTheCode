@@ -8,6 +8,7 @@ from patchthecode.domain import Severity
 from patchthecode.domain.models import Incident, IncidentSource
 from patchthecode.llm.gateway import LLMGateway
 from patchthecode.notifications.notifier import LogNotifier, build_notifiers
+from patchthecode.security.approver import ChannelApprover
 from patchthecode.storage.store import Store
 from patchthecode.validation.static import CommandResult, StaticValidator
 
@@ -224,6 +225,70 @@ async def test_agent_requests_review_and_posts_summary_when_approval_blocked(tmp
     assert len(posts) == 2
     assert any("Please review" in text for text in posts)
     assert any("fp-review" in text for text in posts)
+
+
+async def test_agent_opening_pr_when_channel_approver_replies_yes(tmp_path):
+    class _YesFacade:
+        async def send_message(self, channel: str, text: str) -> bool:
+            return True
+
+        async def read_messages(self, channel: str, marker: str | None = None) -> list[dict]:
+            return [{"ts": "1", "text": f"{marker} approve", "reactions": []}]
+
+    connectors = {
+        "coralogix_mcp": _FakeMCP("coralogix_mcp", "observability", ["query_logs"]),
+        "github_mcp": _FakeMCP(
+            "github_mcp",
+            "git",
+            ["get_file_contents", "create_branch", "create_commit", "create_pull_request"],
+        ),
+    }
+    store = Store(tmp_path / "test.db")
+    agent = Agent(
+        gateway=_ScriptedGateway(),
+        store=store,
+        notifiers=[],
+        connectors=connectors,
+        approver=ChannelApprover(_YesFacade(), timeout_seconds=2, poll_seconds=0.01),
+    )
+    report = await agent.handle(_incident(incident_id="ia:1", fingerprint="fp-ia"))
+    assert report.status == "pr_opened"
+    assert report.pull_request is not None
+
+
+async def test_agent_keeps_pr_pending_and_skips_duplicate_prompt_when_approval_unanswered(tmp_path):
+    class _SilentFacade:
+        async def send_message(self, channel: str, text: str) -> bool:
+            return True
+
+        async def read_messages(self, channel: str, marker: str | None = None) -> list[dict]:
+            return []
+
+    class _SpyNotifier(LogNotifier):
+        review_requests = 0
+
+        async def request_review(self, report) -> None:
+            _SpyNotifier.review_requests += 1
+
+    connectors = {
+        "coralogix_mcp": _FakeMCP("coralogix_mcp", "observability", ["query_logs"]),
+        "github_mcp": _FakeMCP(
+            "github_mcp",
+            "git",
+            ["get_file_contents", "create_branch", "create_commit", "create_pull_request"],
+        ),
+    }
+    store = Store(tmp_path / "test.db")
+    agent = Agent(
+        gateway=_ScriptedGateway(),
+        store=store,
+        notifiers=[_SpyNotifier()],
+        connectors=connectors,
+        approver=ChannelApprover(_SilentFacade(), timeout_seconds=0.05, poll_seconds=0.01),
+    )
+    report = await agent.handle(_incident(incident_id="ia:2", fingerprint="fp-ia2"))
+    assert report.status == "pr_pending_approval"
+    assert _SpyNotifier.review_requests == 0
 
 
 async def test_agent_fix_unavailable_without_git_connector(tmp_path):
