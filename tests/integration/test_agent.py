@@ -382,10 +382,11 @@ async def test_agent_validates_fix_against_materialized_checkout(tmp_path):
 
 
 class _RecordingScriptedGateway(_ScriptedGateway):
-    """Scripted gateway that records the codegen and analysis prompts it received."""
+    """Scripted gateway that records the prompts it received."""
 
     fix_prompt = ""
     analysis_prompt = ""
+    plan_prompt = ""
 
     async def complete_json(self, task: str, messages: list[dict[str, str]]) -> dict:
         user = messages[-1]["content"] if messages else ""
@@ -393,6 +394,8 @@ class _RecordingScriptedGateway(_ScriptedGateway):
             _RecordingScriptedGateway.fix_prompt = user
         if "Determine the root cause" in user:
             _RecordingScriptedGateway.analysis_prompt = user
+        if "Plan the evidence collection" in user:
+            _RecordingScriptedGateway.plan_prompt = user
         return await super().complete_json(task, messages)
 
 
@@ -437,6 +440,37 @@ async def test_agent_reinvestigation_feeds_rejected_fix_into_next_attempt(tmp_pa
     assert "guard the provider" in _RecordingScriptedGateway.fix_prompt
     assert "KNOWN HISTORY FROM PREVIOUS ATTEMPTS" in _RecordingScriptedGateway.analysis_prompt
     assert "rejected attempt" in _RecordingScriptedGateway.analysis_prompt
+
+
+async def test_agent_merged_fix_biases_later_evidence_plans(tmp_path):
+    github = _FakeMCP(
+        "github_mcp",
+        "git",
+        ["get_file_contents", "create_branch", "create_commit", "create_pull_request", "get_pull_request"],
+        pull_state={"state": "closed", "merged": True},
+    )
+    connectors = {
+        "coralogix_mcp": _FakeMCP("coralogix_mcp", "observability", ["query_logs"]),
+        "github_mcp": github,
+    }
+    store = Store(tmp_path / "test.db")
+    agent = Agent(
+        gateway=_RecordingScriptedGateway(),
+        store=store,
+        notifiers=[],
+        connectors=connectors,
+        auto_pr=True,
+    )
+
+    first = await agent.handle(_incident(incident_id="learn:1", fingerprint="fp-learn"))
+    assert first.status == "pr_opened"
+    _RecordingScriptedGateway.plan_prompt = ""
+    assert await agent.poll_pull_requests()
+
+    await agent.handle(_incident(incident_id="fresh:1", fingerprint="fp-fresh"))
+    plan = _RecordingScriptedGateway.plan_prompt
+    assert "PREVIOUSLY SUCCESSFUL EVIDENCE" in plan
+    assert "coralogix_mcp/query_logs" in plan
 
 
 async def test_agent_short_circuits_duplicates(agent):

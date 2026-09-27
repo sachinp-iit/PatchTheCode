@@ -23,8 +23,10 @@ class _FakeGateway:
     def __init__(self, steps: list[dict] | None = None, raise_error: bool = False) -> None:
         self.steps = steps or []
         self.raise_error = raise_error
+        self.messages: list[dict[str, str]] | None = None
 
     async def complete_json(self, task: str, messages: list[dict[str, str]]) -> dict:
+        self.messages = messages
         if self.raise_error:
             raise RuntimeError("model down")
         return {"steps": self.steps}
@@ -113,3 +115,23 @@ async def test_evidence_collector_executes_llm_plan():
     assert len(evidence) == 1
     assert evidence[0].kind == "get_content"
     assert "result of get_content" in str(evidence[0].content)
+
+
+async def test_successful_strategies_surface_in_plan_prompt():
+    gateway = _FakeGateway(steps=[{"connector": "a", "tool": "t1", "arguments": {}, "purpose": "p"}])
+    planner = InvestigationPlanner(gateway=gateway)
+    await planner.plan(
+        _incident(),
+        {"a": _FakeConnector(["t1"])},
+        successful_strategies=[{"system": "coralogix_mcp", "kind": "query_logs", "count": 3}],
+    )
+    content = gateway.messages[-1]["content"]
+    assert "PREVIOUSLY SUCCESSFUL EVIDENCE" in content
+    assert "coralogix_mcp/query_logs (led to 3 merged fix(es))" in content
+
+
+async def test_plan_prompt_omits_strategies_when_none():
+    gateway = _FakeGateway(steps=[{"connector": "a", "tool": "t1", "arguments": {}, "purpose": "p"}])
+    planner = InvestigationPlanner(gateway=gateway)
+    await planner.plan(_incident(), {"a": _FakeConnector(["t1"])})
+    assert "PREVIOUSLY SUCCESSFUL EVIDENCE" not in gateway.messages[-1]["content"]

@@ -6,9 +6,11 @@ and the learning loop (tracking accepted/rejected fixes via PR outcomes).
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from patchthecode.domain.models import FixProposal, Incident, InvestigationReport, PullRequestResult
 
@@ -278,6 +280,45 @@ class Store:
         pr = PullRequestResult(url=row[1], number=row[2], state="merged")
         assert report.fix is not None
         return report.fix, pr
+
+    def successful_strategies(
+        self, fingerprint: str | None = None, limit: int = 5
+    ) -> list[dict[str, Any]]:
+        """Rank evidence strategies that led to merged fixes.
+
+        Looks at investigation reports whose incident ended in a merged PR and
+        aggregates how often each (source_system, kind) evidence combination
+        showed up, so the planner can lean on evidence that has previously
+        produced fixes reviewers accepted.
+        """
+        sql = """
+            SELECT r.report
+            FROM reports r
+            JOIN pull_requests p ON p.incident_id = r.incident_id
+            JOIN incidents i ON i.id = r.incident_id
+            WHERE p.state = 'merged'
+        """
+        params: list[str] = []
+        if fingerprint:
+            sql += " AND i.fingerprint = ?"
+            params.append(fingerprint)
+        counts: dict[tuple[str, str], int] = {}
+        for (report_json,) in self._conn.execute(sql, params).fetchall():
+            try:
+                evidence = json.loads(report_json).get("evidence") or []
+            except (TypeError, ValueError):
+                continue
+            for item in evidence:
+                system = str(item.get("source_system") or "unknown")
+                kind = str(item.get("kind") or "unknown")
+                counts[(system, kind)] = counts.get((system, kind), 0) + 1
+        ranked = [
+            {"system": system, "kind": kind, "count": count}
+            for (system, kind), count in sorted(
+                counts.items(), key=lambda kv: (-kv[1], kv[0][0], kv[0][1])
+            )
+        ]
+        return ranked[:limit]
 
     def playbook(self, fingerprint: str) -> dict | None:
         """Learning summary for a fingerprint, compiled from its history.

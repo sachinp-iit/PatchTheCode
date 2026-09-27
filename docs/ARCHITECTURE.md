@@ -144,8 +144,9 @@ prompts. Do not bypass this path.
 1. **Live alignment tuning**: run `inspect-mcp --dump-to data/inspect` against
    real Coralogix / Sentry / App Insights credentials and tighten `TOOL_SPECS`
    candidates where servers advertise extra variants.
-2. **Continuous improvement**: rank evidence-collection strategies by past
-   investigation success so the planner learns which evidence wins.
+2. **Autonomous operation**: a long-running mode that ingests new incidents
+   (poll or webhook) and drives them through the loop without a CLI call per
+   incident.
 
 Done:
 - Evidence planner (LLM-driven, `investigation/planner.py`).
@@ -202,6 +203,13 @@ Done:
   receives it as `KNOWN HISTORY FROM PREVIOUS ATTEMPTS`, `_propose_fix` reads
   rejections from it, and `playbooks` / `playbook <fingerprint>` print the
   learning state at a glance.
+- Strategy learning (`store.successful_strategies`, `evidence_plan_prompt`):
+  reports whose incident ended in a merged PR are mined for which
+  (source_system, kind) evidence showed up, ranked by count; the orchestrator
+  scopes that ranking to the current fingerprint and falls back to the
+  fleet-wide ranking, then hands it to the planner as
+  `PREVIOUSLY SUCCESSFUL EVIDENCE` so investigations lean on evidence that has
+  already produced accepted fixes.
 - Operator surfaces (`cli.py`, `store.summary`): `list-prs` shows the review
   queue, `rejections` shows the learning queue (fingerprint / incident /
   summary), and `status` prints operating totals — incidents, investigations,

@@ -3,6 +3,7 @@ from datetime import datetime
 from patchthecode.domain import Severity
 from patchthecode.domain.models import (
     CodeLocation,
+    Evidence,
     FixProposal,
     Incident,
     IncidentSource,
@@ -212,3 +213,45 @@ def test_store_playbook_includes_merged_fix(tmp_path):
         "pr": "https://github.com/acme/pay/pull/9",
     }
     assert book["rejections"] == []
+
+
+def test_store_successful_strategies_counts_only_merged(tmp_path):
+    store = Store(tmp_path / "s.db")
+    good = _incident(fingerprint="fp-good")
+    store.upsert_incident(good)
+    store.save_report(
+        InvestigationReport(
+            incident=good,
+            status="pr_opened",
+            fix=_fix(),
+            evidence=[
+                Evidence(kind="query_logs", source_system="coralogix_mcp", content={"text": "boom"}),
+                Evidence(kind="search_repository", source_system="github_mcp", content={"text": "repo"}),
+            ],
+        )
+    )
+    store.save_pull_request(good.id, "acme/pay", PullRequestResult(url="u1", number=1, state="open"))
+    store.mark_pull_request(good.id, "merged")
+
+    closed = _incident(fingerprint="fp-closed").model_copy(update={"id": "t:store:2"})
+    store.upsert_incident(closed)
+    store.save_report(
+        InvestigationReport(
+            incident=closed,
+            status="pr_opened",
+            fix=_fix(),
+            evidence=[
+                Evidence(kind="query_logs", source_system="coralogix_mcp", content={"text": "boom"})
+            ],
+        )
+    )
+    store.save_pull_request(closed.id, "acme/pay", PullRequestResult(url="u2", number=2, state="open"))
+    store.mark_pull_request(closed.id, "closed")
+
+    assert store.successful_strategies() == [
+        {"system": "coralogix_mcp", "kind": "query_logs", "count": 1},
+        {"system": "github_mcp", "kind": "search_repository", "count": 1},
+    ]
+    assert store.successful_strategies("fp-good")[0]["kind"] == "query_logs"
+    assert store.successful_strategies("fp-closed") == []
+    assert len(store.successful_strategies(limit=1)) == 1

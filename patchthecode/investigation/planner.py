@@ -35,9 +35,14 @@ class InvestigationPlanner:
     def __init__(self, gateway: LLMGateway | None = None) -> None:
         self.gateway = gateway
 
-    async def plan(self, incident: Incident, connectors: dict[str, Any]) -> list[EvidencePlanItem]:
+    async def plan(
+        self,
+        incident: Incident,
+        connectors: dict[str, Any],
+        successful_strategies: list[dict[str, Any]] | None = None,
+    ) -> list[EvidencePlanItem]:
         tool_catalog = await self._build_tool_catalog(connectors)
-        items = await self._llm_plan(incident, connectors, tool_catalog)
+        items = await self._llm_plan(incident, connectors, tool_catalog, successful_strategies)
         if items is None:
             return self.fallback_plan(incident)
         return self._select_known_connectors(items, connectors, tool_catalog)
@@ -58,6 +63,7 @@ class InvestigationPlanner:
         incident: Incident,
         connectors: dict[str, Any],
         tool_catalog: dict[str, set[str] | None],
+        successful_strategies: list[dict[str, Any]] | None = None,
     ) -> list[EvidencePlanItem] | None:
         if self.gateway is None:
             return None
@@ -69,7 +75,9 @@ class InvestigationPlanner:
             }
             for name, client in connectors.items()
         ]
-        messages = evidence_plan_prompt(incident.model_dump(mode="json"), catalog)
+        messages = evidence_plan_prompt(
+            incident.model_dump(mode="json"), catalog, successful_strategies
+        )
         try:
             data = await self.gateway.complete_json("investigation", messages)
         except Exception:  # noqa: BLE001 - fall back when the model is unreachable

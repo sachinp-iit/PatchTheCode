@@ -41,9 +41,14 @@ class EvidenceCollector:
         self.planner = planner or InvestigationPlanner()
         self.redactor = redactor or Redactor()
 
-    async def collect(self, incident: Incident, connectors: dict[str, Any]) -> list[Evidence]:
+    async def collect(
+        self,
+        incident: Incident,
+        connectors: dict[str, Any],
+        successful_strategies: list[dict[str, Any]] | None = None,
+    ) -> list[Evidence]:
         evidence: list[Evidence] = []
-        for item in await self.planner.plan(incident, connectors):
+        for item in await self.planner.plan(incident, connectors, successful_strategies):
             client = connectors.get(item.connector)
             if client is None:
                 continue

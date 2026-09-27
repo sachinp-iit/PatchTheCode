@@ -12,12 +12,31 @@ from typing import Any
 def evidence_plan_prompt(
     incident: dict[str, Any],
     available_mcp: list[dict[str, Any]],
+    successful_strategies: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
-    """Decide what evidence to collect and from which connectors."""
+    """Decide what evidence to collect and from which connectors.
+
+    When prior investigations produced merged fixes, the evidence that showed up
+    in them is surfaced so the planner leans on strategies that have already
+    worked instead of re-deriving the same query blind.
+    """
     user = (
         f"Plan the evidence collection for this production incident.\n\n"
         f"INCIDENT:\n{incident}\n\n"
         f"AVAILABLE MCP CONNECTORS (name + kind + tool names):\n{available_mcp}\n\n"
+    )
+    if successful_strategies:
+        lines = "\n".join(
+            f"- {s.get('system', 'unknown')}/{s.get('kind', 'unknown')}"
+            f" (led to {s.get('count', 1)} merged fix(es))"
+            for s in successful_strategies
+        )
+        user += (
+            "PREVIOUSLY SUCCESSFUL EVIDENCE (from investigations that led to merged fixes):\n"
+            f"{lines}\n"
+            "Prefer these kinds where they apply, but only use listed connectors/tools.\n\n"
+        )
+    user += (
         "Return JSON {\"steps\": [{\"connector\": str, \"tool\": str, "
         "\"arguments\": dict, \"purpose\": str}]}. Use only the listed "
         "connector/tool names, request the narrowest time range and fields, "

@@ -106,7 +106,11 @@ class Agent:
         report = InvestigationReport(incident=incident)
 
         try:
-            report.evidence = await self.evidence_collector.collect(incident, self.connectors)
+            report.evidence = await self.evidence_collector.collect(
+                incident,
+                self.connectors,
+                successful_strategies=self._learned_strategies(incident.fingerprint),
+            )
         except Exception:  # noqa: BLE001
             logger.exception("evidence collection failed for %s", incident.id)
 
@@ -122,6 +126,13 @@ class Agent:
         for notifier in self.notifiers:
             await notifier.send(report)
         return report
+
+    def _learned_strategies(self, fingerprint: str) -> list[dict]:
+        """Evidence that led to merged fixes, scoped to the fingerprint if known."""
+        scoped = self.store.successful_strategies(fingerprint)
+        if scoped:
+            return scoped
+        return self.store.successful_strategies()
 
     async def _propose_fix(self, report: InvestigationReport) -> None:
         """Generate a candidate fix when the root cause resolves to a file."""

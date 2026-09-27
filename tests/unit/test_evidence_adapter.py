@@ -34,7 +34,12 @@ class _Plan:
     def __init__(self, steps: list[EvidencePlanItem]) -> None:
         self._steps = steps
 
-    async def plan(self, incident: Incident, connectors: dict) -> list[EvidencePlanItem]:
+    async def plan(
+        self,
+        incident: Incident,
+        connectors: dict,
+        successful_strategies: list[dict] | None = None,
+    ) -> list[EvidencePlanItem]:
         return self._steps
 
 

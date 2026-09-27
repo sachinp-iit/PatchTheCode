@@ -343,9 +343,11 @@ The initial focus is:
 - [ ] Automated validation
 - [ ] Pull-request generation
 - [x] Developer notifications
-- [ ] Investigation history
-- [ ] Fix outcome feedback
+- [x] Investigation history
+- [x] Fix outcome feedback
 - [x] Learning from accepted/rejected fixes
+- [x] Debugging playbooks
+- [x] Strategy learning from merged fixes
 
 Items marked as incomplete are part of the development roadmap and should not be interpreted as currently implemented functionality.
 
