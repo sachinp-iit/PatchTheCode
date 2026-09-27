@@ -10,6 +10,8 @@ Currently supports:
   - `list-prs`: show the open pull requests awaiting review.
   - `rejections`: show fixes reviewers rejected (the learning queue).
   - `status`: operating totals from the store.
+  - `playbooks`: list the debugging playbooks for recurring fingerprints.
+  - `playbook <fingerprint>`: show one fingerprint's full debugging playbook.
 """
 
 from __future__ import annotations
@@ -223,6 +225,45 @@ def status() -> None:
     counts = agent.store.summary()
     for key, value in counts.items():
         console.print(f"  {key}: [cyan]{value}[/cyan]")
+
+
+@app.command()
+def playbooks() -> None:
+    """List the debugging playbooks for recurring fingerprints."""
+    agent = _build_agent(_settings())
+    books = agent.store.playbooks()
+    if not books:
+        console.print("[yellow]No playbooks yet.[/yellow]")
+        return
+    for book in books:
+        merged = "merged" if book["merged"] else "no accepted fix"
+        console.print(
+            f"  {book['fingerprint']} recurrences={book['recurrences']} "
+            f"{merged} rejections={len(book['rejections'])}"
+        )
+        if book["last_title"]:
+            console.print(f"      {book['last_title']}")
+
+
+@app.command()
+def playbook(fingerprint: Annotated[str, typer.Argument(help="incident fingerprint")]) -> None:
+    """Show one fingerprint's debugging playbook."""
+    agent = _build_agent(_settings())
+    book = agent.store.playbook(fingerprint)
+    if book is None:
+        console.print(f"[yellow]No playbook for {fingerprint}.[/yellow]")
+        return
+    console.print(f"  fingerprint: {book['fingerprint']}")
+    console.print(f"  recurrences: [cyan]{book['recurrences']}[/cyan]")
+    console.print(f"  first_seen:  {book['first_seen']}")
+    console.print(f"  last_seen:   {book['last_seen']}")
+    if book["last_title"]:
+        console.print(f"  last title:  {book['last_title']}")
+    merged = book["merged"]
+    if merged:
+        console.print(f"  accepted fix ({merged['pr']}): {merged['summary']}")
+    for rejected in book["rejections"]:
+        console.print(f"  rejected ({rejected['reason']}): {rejected['summary']}")
 
 
 if __name__ == "__main__":

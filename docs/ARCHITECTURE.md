@@ -144,8 +144,8 @@ prompts. Do not bypass this path.
 1. **Live alignment tuning**: run `inspect-mcp --dump-to data/inspect` against
    real Coralogix / Sentry / App Insights credentials and tighten `TOOL_SPECS`
    candidates where servers advertise extra variants.
-2. **Debugging playbooks**: turn learned fixes and rejection history into
-   reusable playbooks per fingerprint so recurring incidents resolve faster.
+2. **Continuous improvement**: rank evidence-collection strategies by past
+   investigation success so the planner learns which evidence wins.
 
 Done:
 - Evidence planner (LLM-driven, `investigation/planner.py`).
@@ -196,6 +196,12 @@ Done:
   closed without merge is recorded as a rejection for its fingerprint; the
   next fix generation for that fingerprint feeds the rejected summaries and
   diffs into the prompt so the model proposes a different approach.
+- Debugging playbooks (`store.playbook(s)`, `analyzer` history, `cli`):
+  `store.playbook(fingerprint)` consolidates recurrences, the latest title,
+  any merged fix, and all rejections into one dict; the root-cause analyzer
+  receives it as `KNOWN HISTORY FROM PREVIOUS ATTEMPTS`, `_propose_fix` reads
+  rejections from it, and `playbooks` / `playbook <fingerprint>` print the
+  learning state at a glance.
 - Operator surfaces (`cli.py`, `store.summary`): `list-prs` shows the review
   queue, `rejections` shows the learning queue (fingerprint / incident /
   summary), and `status` prints operating totals — incidents, investigations,

@@ -96,3 +96,43 @@ async def test_invalid_payload_falls_back_to_insufficient():
     analyzer = RootCauseAnalyzer(gateway=_FakeGateway(data={"hypothesis": {}}))  # non-string hypothesis
     cause = await analyzer.analyze(_incident(), _evidence())
     assert cause.hypothesis == INSUFFICIENT_HYPOTHESIS
+
+
+class _RecordingGateway(_FakeGateway):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.messages: list[dict[str, str]] | None = None
+
+    async def complete_json(self, task: str, messages: list[dict[str, str]]) -> dict:
+        self.messages = messages
+        return await super().complete_json(task, messages)
+
+
+async def test_history_embedded_in_root_cause_prompt_when_provided():
+    gateway = _RecordingGateway(data={"hypothesis": "h", "confidence": 0.9, "explanation": "e"})
+    analyzer = RootCauseAnalyzer(gateway=gateway)
+    await analyzer.analyze(
+        _incident(),
+        _evidence(),
+        history={
+            "fingerprint": "fp",
+            "recurrences": 3,
+            "last_title": "boom",
+            "merged": {"summary": "guard the provider", "pr": "https://x/pull/1"},
+            "rejections": [
+                {"summary": "drop the table", "reason": "breaks prod", "diff": "-x", "created_at": "t"}
+            ],
+        },
+    )
+    content = gateway.messages[0]["content"]
+    assert "KNOWN HISTORY FROM PREVIOUS ATTEMPTS" in content
+    assert "recurred 3 time(s)" in content
+    assert "accepted fix" in content
+    assert "rejected attempt (breaks prod): drop the table" in content
+
+
+async def test_no_history_omits_history_section():
+    gateway = _RecordingGateway(data={"hypothesis": "h", "confidence": 0.9, "explanation": "e"})
+    analyzer = RootCauseAnalyzer(gateway=gateway)
+    await analyzer.analyze(_incident(), _evidence())
+    assert "KNOWN HISTORY" not in gateway.messages[0]["content"]

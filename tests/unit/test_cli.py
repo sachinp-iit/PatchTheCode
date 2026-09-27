@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from patchthecode.cli import list_prs, rejections, status
+from patchthecode.cli import list_prs, playbook, playbooks, rejections, status
 from patchthecode.domain import Severity
 from patchthecode.domain.models import (
     CodeLocation,
@@ -93,3 +93,35 @@ def test_status_prints_totals(monkeypatch, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "incidents: 1" in out
     assert "open_prs: 1" in out
+
+
+def test_playbooks_lists_fingerprints(monkeypatch, tmp_path, capsys):
+    store = _stub(monkeypatch, tmp_path)
+    _seed(store)
+    playbooks()
+    out = capsys.readouterr().out
+    assert "fp-ops" in out
+    assert "recurrences=1" in out
+
+
+def test_playbooks_reports_empty(monkeypatch, tmp_path, capsys):
+    _stub(monkeypatch, tmp_path)
+    playbooks()
+    assert "No playbooks yet" in capsys.readouterr().out
+
+
+def test_playbook_shows_details(monkeypatch, tmp_path, capsys):
+    store = _stub(monkeypatch, tmp_path)
+    _seed(store)
+    store.mark_pull_request("ops:1", "closed")
+    playbook("fp-ops")
+    out = capsys.readouterr().out
+    assert "fingerprint: fp-ops" in out
+    assert "recurrences: 1" in out
+    assert "rejected (closed without merge): guard the provider" in out
+
+
+def test_playbook_unknown_fingerprint(monkeypatch, tmp_path, capsys):
+    _stub(monkeypatch, tmp_path)
+    playbook("nope")
+    assert "No playbook for nope" in capsys.readouterr().out

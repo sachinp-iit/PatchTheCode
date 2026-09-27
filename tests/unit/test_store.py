@@ -160,3 +160,55 @@ def test_store_all_rejections_and_summary(tmp_path):
     assert counts["open_prs"] == 0
     assert counts["merged_fixes"] == 0
     assert counts["rejections"] == 1
+
+
+def test_store_playbook_unknown_fingerprint(tmp_path):
+    store = Store(tmp_path / "s.db")
+    assert store.playbook("nope") is None
+    assert store.playbooks() == []
+
+
+def test_store_playbook_compiles_history(tmp_path):
+    store = Store(tmp_path / "s.db")
+    incident = _incident(fingerprint="fp-book")
+    store.upsert_incident(incident)
+    store.save_report(InvestigationReport(incident=incident, status="pr_opened", fix=_fix()))
+    store.save_pull_request(
+        incident.id,
+        "acme/pay",
+        PullRequestResult(url="https://github.com/acme/pay/pull/8", number=8, state="open"),
+    )
+    store.mark_pull_request(incident.id, "closed")
+
+    book = store.playbook("fp-book")
+    assert book is not None
+    assert book["recurrences"] == 1
+    assert book["last_title"] == "boom"
+    assert book["merged"] is None
+    assert len(book["rejections"]) == 1
+    assert book["rejections"][0]["summary"] == "guard the provider"
+
+    books = store.playbooks()
+    assert len(books) == 1
+    assert books[0]["fingerprint"] == "fp-book"
+
+
+def test_store_playbook_includes_merged_fix(tmp_path):
+    store = Store(tmp_path / "s.db")
+    incident = _incident(fingerprint="fp-book-merged")
+    store.upsert_incident(incident)
+    store.save_report(InvestigationReport(incident=incident, status="pr_merged", fix=_fix()))
+    store.save_pull_request(
+        incident.id,
+        "acme/pay",
+        PullRequestResult(url="https://github.com/acme/pay/pull/9", number=9, state="merged"),
+    )
+
+    book = store.playbook("fp-book-merged")
+    assert book is not None
+    assert book["merged"] == {
+        "summary": "guard the provider",
+        "diff": _fix().diff,
+        "pr": "https://github.com/acme/pay/pull/9",
+    }
+    assert book["rejections"] == []

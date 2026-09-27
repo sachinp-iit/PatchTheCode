@@ -28,7 +28,12 @@ class RootCauseAnalyzer:
     def __init__(self, gateway: LLMGateway) -> None:
         self.gateway = gateway
 
-    async def analyze(self, incident: Incident, evidence: list[Evidence]) -> RootCause:
+    async def analyze(
+        self,
+        incident: Incident,
+        evidence: list[Evidence],
+        history: dict | None = None,
+    ) -> RootCause:
         if not evidence:
             logger.info("no evidence for %s; returning insufficient-evidence result", incident.id)
             return self.insufficient(incident, reason="No evidence was collected for this incident.")
@@ -37,6 +42,7 @@ class RootCauseAnalyzer:
             incident.model_dump(mode="json"),
             [e.model_dump(mode="json") for e in evidence],
             service,
+            history=history,
         )
         try:
             data = await self.gateway.complete_json("investigation", messages)

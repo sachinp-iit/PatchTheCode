@@ -42,13 +42,40 @@ def root_cause_prompt(
     incident: dict[str, Any],
     evidence: list[dict[str, Any]],
     service_hint: str | None,
+    history: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
-    """Form a root-cause hypothesis candidate for a fix."""
+    """Form a root-cause hypothesis candidate for a fix.
+
+    When the fingerprint has a debugging playbook, its known history is
+    surfaced first so a recurring incident sharpens (rather than re-derives)
+    the prior hypothesis.
+    """
     user = (
         f"Determine the root cause for this incident.\n\n"
         f"INCIDENT:\n{incident}\n\n"
         f"EVIDENCE:\n{evidence}\n\n"
         f"SERVICE HINT: {service_hint or 'unknown'}\n\n"
+    )
+    if history:
+        lines = []
+        if history.get("recurrences", 0) > 1:
+            lines.append(f"this fingerprint has recurred {history['recurrences']} time(s)")
+        if history.get("last_title"):
+            lines.append(f"last occurrence title: {history['last_title']}")
+        merged = history.get("merged")
+        if merged:
+            lines.append(
+                f"a previously accepted fix ({merged.get('pr', 'merged')}): {merged.get('summary', '')}"
+            )
+        for rejected in history.get("rejections") or []:
+            lines.append(
+                f"a rejected attempt ({rejected.get('reason', 'closed without merge')}): "
+                f"{rejected.get('summary', '')}"
+            )
+        if lines:
+            joined = "\n".join(f"  - {line}" for line in lines)
+            user += f"KNOWN HISTORY FROM PREVIOUS ATTEMPTS:\n{joined}\n\n"
+    user += (
         "Return JSON: {\"hypothesis\": str, \"confidence\": float, \"repository\": str, "
         "\"file_path\": str|None, \"function\": str|None, \"explanation\": str, "
         "\"evidence_refs\": [str]}"

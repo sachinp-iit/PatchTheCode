@@ -382,14 +382,17 @@ async def test_agent_validates_fix_against_materialized_checkout(tmp_path):
 
 
 class _RecordingScriptedGateway(_ScriptedGateway):
-    """Scripted gateway that records the codegen prompt it received."""
+    """Scripted gateway that records the codegen and analysis prompts it received."""
 
     fix_prompt = ""
+    analysis_prompt = ""
 
     async def complete_json(self, task: str, messages: list[dict[str, str]]) -> dict:
         user = messages[-1]["content"] if messages else ""
         if "Generate a minimal fix" in user:
             _RecordingScriptedGateway.fix_prompt = user
+        if "Determine the root cause" in user:
+            _RecordingScriptedGateway.analysis_prompt = user
         return await super().complete_json(task, messages)
 
 
@@ -432,6 +435,8 @@ async def test_agent_reinvestigation_feeds_rejected_fix_into_next_attempt(tmp_pa
     assert "PREVIOUSLY REJECTED FIXES" in _RecordingScriptedGateway.fix_prompt
     assert "Do not repeat the rejected approach" in _RecordingScriptedGateway.fix_prompt
     assert "guard the provider" in _RecordingScriptedGateway.fix_prompt
+    assert "KNOWN HISTORY FROM PREVIOUS ATTEMPTS" in _RecordingScriptedGateway.analysis_prompt
+    assert "rejected attempt" in _RecordingScriptedGateway.analysis_prompt
 
 
 async def test_agent_short_circuits_duplicates(agent):

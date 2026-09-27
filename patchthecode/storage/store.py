@@ -279,5 +279,50 @@ class Store:
         assert report.fix is not None
         return report.fix, pr
 
+    def playbook(self, fingerprint: str) -> dict | None:
+        """Learning summary for a fingerprint, compiled from its history.
+
+        Consolidates recurrences, any previously merged fix, and every rejected
+        attempt so re-investigations of a recurring fingerprint can start from
+        what was already tried rather than from scratch.
+        """
+        agg = self._conn.execute(
+            "SELECT COUNT(*), MIN(first_seen), MAX(last_seen) FROM incidents WHERE fingerprint = ?",
+            (fingerprint,),
+        ).fetchone()
+        if agg is None or agg[0] == 0:
+            return None
+        latest = self._conn.execute(
+            "SELECT json_extract(payload, '$.title') FROM incidents"
+            " WHERE fingerprint = ? ORDER BY last_seen DESC LIMIT 1",
+            (fingerprint,),
+        ).fetchone()
+        merged = self.known_fix(fingerprint)
+        merged_entry = None
+        if merged is not None:
+            fix, pr = merged
+            merged_entry = {"summary": fix.summary, "diff": fix.diff, "pr": pr.url}
+        return {
+            "fingerprint": fingerprint,
+            "recurrences": agg[0],
+            "first_seen": agg[1],
+            "last_seen": agg[2],
+            "last_title": latest[0] if latest else None,
+            "merged": merged_entry,
+            "rejections": self.rejected_fixes(fingerprint),
+        }
+
+    def playbooks(self) -> list[dict]:
+        """Every fingerprint's debugging playbook, most recent first."""
+        rows = self._conn.execute(
+            "SELECT fingerprint FROM incidents GROUP BY fingerprint ORDER BY MAX(last_seen) DESC"
+        ).fetchall()
+        books = []
+        for (fingerprint,) in rows:
+            book = self.playbook(fingerprint)
+            if book is not None:
+                books.append(book)
+        return books
+
     def close(self) -> None:
         self._conn.close()

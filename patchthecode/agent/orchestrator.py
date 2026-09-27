@@ -111,7 +111,9 @@ class Agent:
             logger.exception("evidence collection failed for %s", incident.id)
 
         if report.evidence:
-            report.root_cause = await self.analyzer.analyze(incident, report.evidence)
+            report.root_cause = await self.analyzer.analyze(
+                incident, report.evidence, history=self.store.playbook(incident.fingerprint)
+            )
             await self._propose_fix(report)
         else:
             report.status = "no_evidence"
@@ -132,11 +134,12 @@ class Agent:
                 snippet = await self.github.resolve_file(root_cause.location)
             except Exception:  # noqa: BLE001 - a read failure just means no fix this round
                 logger.warning("could not fetch source for %s", root_cause.location.file_path, exc_info=True)
+        playbook = self.store.playbook(report.incident.fingerprint) or {}
         report.fix = await self.fixer.propose(
             root_cause.location,
             snippet or "",
             root_cause,
-            rejected_fixes=self.store.rejected_fixes(report.incident.fingerprint) or None,
+            rejected_fixes=playbook.get("rejections") or None,
         )
         if not report.fix.diff:
             report.status = "fix_unavailable"
