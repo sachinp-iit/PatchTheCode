@@ -132,7 +132,12 @@ class Agent:
                 snippet = await self.github.resolve_file(root_cause.location)
             except Exception:  # noqa: BLE001 - a read failure just means no fix this round
                 logger.warning("could not fetch source for %s", root_cause.location.file_path, exc_info=True)
-        report.fix = await self.fixer.propose(root_cause.location, snippet or "", root_cause)
+        report.fix = await self.fixer.propose(
+            root_cause.location,
+            snippet or "",
+            root_cause,
+            rejected_fixes=self.store.rejected_fixes(report.incident.fingerprint) or None,
+        )
         if not report.fix.diff:
             report.status = "fix_unavailable"
             return

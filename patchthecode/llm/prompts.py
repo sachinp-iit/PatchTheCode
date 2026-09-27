@@ -60,15 +60,33 @@ def generate_fix_prompt(
     location: dict[str, Any],
     code_snippet: str,
     root_cause: str,
+    rejections: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
-    """Produce a candidate diff for a located root cause."""
+    """Produce a candidate diff for a located root cause.
+
+    When reviewers have already closed a previous attempt for the same
+    fingerprint, the rejected approach is surfaced so the model proposes
+    something different instead of repeating it.
+    """
     user = (
         f"Generate a minimal fix.\n\n"
         f"LOCATION:\n{location}\n\n"
         f"ROOT CAUSE:\n{root_cause}\n\n"
         f"CURRENT CODE:\n```\n{code_snippet}\n```\n\n"
-        "Return JSON: {\"diff\": str, \"summary\": str, \"files\": [str]}"
     )
+    if rejections:
+        attempts = "\n".join(
+            f"- reason: {rejected.get('reason', 'closed without merge')}\n"
+            f"  summary: {rejected.get('summary', '')}\n"
+            f"  diff:\n```diff\n{rejected.get('diff', '')}\n```"
+            for rejected in rejections
+        )
+        user += (
+            "A previous fix for this incident was rejected by a reviewer.\n"
+            "Do not repeat the rejected approach; propose a different one.\n"
+            f"PREVIOUSLY REJECTED FIXES:\n{attempts}\n\n"
+        )
+    user += "Return JSON: {\"diff\": str, \"summary\": str, \"files\": [str]}"
     return [{"role": "user", "content": user}]
 
 

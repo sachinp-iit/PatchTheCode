@@ -345,7 +345,7 @@ The initial focus is:
 - [x] Developer notifications
 - [ ] Investigation history
 - [ ] Fix outcome feedback
-- [ ] Learning from accepted/rejected fixes
+- [x] Learning from accepted/rejected fixes
 
 Items marked as incomplete are part of the development roadmap and should not be interpreted as currently implemented functionality.
 

@@ -144,9 +144,8 @@ prompts. Do not bypass this path.
 1. **Live alignment tuning**: run `inspect-mcp --dump-to data/inspect` against
    real Coralogix / Sentry / App Insights credentials and tighten `TOOL_SPECS`
    candidates where servers advertise extra variants.
-2. **Rejection feedback loop**: persist reviewer rejections in the store and
-   feed them back so the next fix for the same fingerprint avoids the
-   rejected approach.
+2. **Operator surfaces**: CLI commands to list open PRs and rejected fixes so
+   teams can see the pending review and learning queues at a glance.
 
 Done:
 - Evidence planner (LLM-driven, `investigation/planner.py`).
@@ -193,6 +192,10 @@ Done:
   with runtime-aligned tool names. Opt in via `PATCHTHECODE_APPROVAL_CHANNEL`.
   Approvers that surface their own prompt (`prompts_itself`) skip the
   duplicate review-request notification.
+- Rejection feedback loop (`storage/store.py`, `remediation/fixer.py`): a PR
+  closed without merge is recorded as a rejection for its fingerprint; the
+  next fix generation for that fingerprint feeds the rejected summaries and
+  diffs into the prompt so the model proposes a different approach.
 
 ## Test / lint
 

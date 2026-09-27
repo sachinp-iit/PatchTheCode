@@ -381,6 +381,59 @@ async def test_agent_validates_fix_against_materialized_checkout(tmp_path):
     assert report.validation.checks[0]["status"] == "passed"
 
 
+class _RecordingScriptedGateway(_ScriptedGateway):
+    """Scripted gateway that records the codegen prompt it received."""
+
+    fix_prompt = ""
+
+    async def complete_json(self, task: str, messages: list[dict[str, str]]) -> dict:
+        user = messages[-1]["content"] if messages else ""
+        if "Generate a minimal fix" in user:
+            _RecordingScriptedGateway.fix_prompt = user
+        return await super().complete_json(task, messages)
+
+
+async def test_agent_reinvestigation_feeds_rejected_fix_into_next_attempt(tmp_path):
+    github = _FakeMCP(
+        "github_mcp",
+        "git",
+        ["get_file_contents", "create_branch", "create_commit", "create_pull_request", "get_pull_request"],
+        pull_state={"state": "closed", "merged": False},
+    )
+    connectors = {
+        "coralogix_mcp": _FakeMCP("coralogix_mcp", "observability", ["query_logs"]),
+        "github_mcp": github,
+    }
+    store = Store(tmp_path / "test.db")
+    agent = Agent(
+        gateway=_RecordingScriptedGateway(),
+        store=store,
+        notifiers=[],
+        connectors=connectors,
+        auto_pr=True,
+    )
+
+    first = await agent.handle(_incident(incident_id="rej:1", fingerprint="fp-rej-loop"))
+    assert first.status == "pr_opened"
+
+    updates = await agent.poll_pull_requests()
+    assert updates == [
+        {
+            "incident_id": "rej:1",
+            "repository": "payments",
+            "url": "https://github.com/payments/payments/pull/1",
+            "state": "closed",
+        }
+    ]
+    assert store.has_rejections("fp-rej-loop") is True
+
+    second = await agent.handle(_incident(incident_id="rej:2", fingerprint="fp-rej-loop"))
+    assert second.status == "pr_opened"
+    assert "PREVIOUSLY REJECTED FIXES" in _RecordingScriptedGateway.fix_prompt
+    assert "Do not repeat the rejected approach" in _RecordingScriptedGateway.fix_prompt
+    assert "guard the provider" in _RecordingScriptedGateway.fix_prompt
+
+
 async def test_agent_short_circuits_duplicates(agent):
     first = await agent.handle(_incident())
     assert first.status == "no_evidence"

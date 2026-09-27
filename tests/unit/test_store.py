@@ -94,3 +94,41 @@ def test_store_known_fix_ignores_closed_prs(tmp_path):
     )
     store.mark_pull_request(incident.id, "closed")
     assert store.known_fix("fp-closed") is None
+
+
+def test_store_records_rejection_when_pr_closed_without_merge(tmp_path):
+    store = Store(tmp_path / "s.db")
+    incident = _incident(fingerprint="fp-rej")
+    store.upsert_incident(incident)
+    report = InvestigationReport(incident=incident, status="pr_opened", fix=_fix())
+    store.save_report(report)
+    store.save_pull_request(
+        incident.id,
+        "acme/pay",
+        PullRequestResult(url="https://github.com/acme/pay/pull/5", number=5, state="open"),
+    )
+
+    assert store.has_rejections("fp-rej") is False
+    store.mark_pull_request(incident.id, "closed")
+    store.mark_pull_request(incident.id, "closed")  # idempotent
+    assert store.has_rejections("fp-rej") is True
+    rejected = store.rejected_fixes("fp-rej")
+    assert len(rejected) == 1
+    assert rejected[0]["summary"] == "guard the provider"
+    assert "--- a/src/svc.py" in rejected[0]["diff"]
+    assert rejected[0]["reason"] == "closed without merge"
+    assert store.known_fix("fp-rej") is None
+
+
+def test_store_merge_does_not_record_rejection(tmp_path):
+    store = Store(tmp_path / "s.db")
+    incident = _incident(fingerprint="fp-merge-ok")
+    store.upsert_incident(incident)
+    store.save_report(InvestigationReport(incident=incident, status="pr_opened", fix=_fix()))
+    store.save_pull_request(
+        incident.id,
+        "acme/pay",
+        PullRequestResult(url="https://github.com/acme/pay/pull/6", number=6, state="open"),
+    )
+    store.mark_pull_request(incident.id, "merged")
+    assert store.has_rejections("fp-merge-ok") is False

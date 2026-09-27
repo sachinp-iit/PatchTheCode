@@ -52,6 +52,19 @@ class Store:
             )
             """
         )
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS rejections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fingerprint TEXT NOT NULL,
+                incident_id TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                diff TEXT NOT NULL,
+                reason TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            )
+            """
+        )
         self._conn.commit()
 
     def get_incident(self, incident_id: str) -> Incident | None:
@@ -137,12 +150,75 @@ class Store:
         ]
 
     def mark_pull_request(self, incident_id: str, state: str) -> None:
-        """Record the reviewed outcome of a PR (merged/closed)."""
+        """Record the reviewed outcome of a PR (merged/closed).
+
+        A PR closed without merging counts as a rejected fix and is recorded
+        so the next attempt for the same fingerprint can avoid it.
+        """
         self._conn.execute(
             "UPDATE pull_requests SET state = ?, updated_at = ? WHERE incident_id = ?",
             (state, datetime.utcnow().isoformat(), incident_id),
         )
+        if state == "closed":
+            self._record_rejection(incident_id)
         self._conn.commit()
+
+    def _record_rejection(self, incident_id: str) -> None:
+        """Persist the latest fix for an incident as a rejection of its fingerprint."""
+        existing = self._conn.execute(
+            "SELECT 1 FROM rejections WHERE incident_id = ?", (incident_id,)
+        ).fetchone()
+        if existing is not None:
+            return
+        row = self._conn.execute(
+            """
+            SELECT r.report, i.fingerprint
+            FROM reports r
+            JOIN incidents i ON i.id = r.incident_id
+            WHERE r.incident_id = ? AND json_extract(r.report, '$.fix') IS NOT NULL
+            ORDER BY r.created_at DESC
+            LIMIT 1
+            """,
+            (incident_id,),
+        ).fetchone()
+        if row is None:
+            return
+        report = InvestigationReport.model_validate_json(row[0])
+        fingerprint = row[1]
+        assert report.fix is not None
+        if not report.fix.diff:
+            return
+        self._conn.execute(
+            "INSERT INTO rejections (fingerprint, incident_id, summary, diff, reason, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                fingerprint,
+                incident_id,
+                report.fix.summary,
+                report.fix.diff,
+                "closed without merge",
+                datetime.utcnow().isoformat(),
+            ),
+        )
+
+    def has_rejections(self, fingerprint: str) -> bool:
+        """True when a reviewer already rejected a fix for this fingerprint."""
+        row = self._conn.execute(
+            "SELECT 1 FROM rejections WHERE fingerprint = ? LIMIT 1", (fingerprint,)
+        ).fetchone()
+        return row is not None
+
+    def rejected_fixes(self, fingerprint: str) -> list[dict]:
+        """The rejected fix attempts for a fingerprint, newest first."""
+        rows = self._conn.execute(
+            "SELECT summary, diff, reason, created_at FROM rejections WHERE fingerprint = ?"
+            " ORDER BY created_at DESC",
+            (fingerprint,),
+        ).fetchall()
+        return [
+            {"summary": row[0], "diff": row[1], "reason": row[2], "created_at": row[3]}
+            for row in rows
+        ]
 
     def known_fix(self, fingerprint: str) -> tuple[FixProposal, PullRequestResult] | None:
         """Return the merged fix previously accepted for a fingerprint, if any.

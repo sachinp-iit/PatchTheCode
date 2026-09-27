@@ -30,12 +30,24 @@ class FixGenerator:
         location: CodeLocation,
         code_snippet: str,
         root_cause: RootCause,
+        rejected_fixes: list[dict] | None = None,
     ) -> FixProposal:
         if not code_snippet:
             logger.info("cannot generate fix for %s: source snippet unavailable", location.repository)
             return self._placeholder(location, root_cause, SOURCE_UNAVAILABLE)
 
-        messages = generate_fix_prompt(location.model_dump(), code_snippet, root_cause.hypothesis)
+        if rejected_fixes:
+            logger.info(
+                "generating fix with %d previously rejected attempt(s) for %s",
+                len(rejected_fixes),
+                location.repository,
+            )
+        messages = generate_fix_prompt(
+            location.model_dump(),
+            code_snippet,
+            root_cause.hypothesis,
+            rejections=rejected_fixes,
+        )
         try:
             data = await self.gateway.complete_json("codegen", messages)
             diff = str(data.get("diff") or "").strip()
