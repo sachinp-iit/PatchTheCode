@@ -141,11 +141,12 @@ prompts. Do not bypass this path.
 
 ## Where to build next (priority)
 
-1. **Notifications**: Slack / Teams send a summary report; add review-request
-   prompts when a PR is blocked on approval.
-2. **Live alignment tuning**: run `inspect-mcp --dump-to data/inspect` against
+1. **Live alignment tuning**: run `inspect-mcp --dump-to data/inspect` against
    real Coralogix / Sentry / App Insights credentials and tighten `TOOL_SPECS`
    candidates where servers advertise extra variants.
+2. **Interactive approval flow**: the review-request prompt is send-only today;
+   give reviewers a way to reply approve/reject that feeds the `Approver`
+   instead of the default `LoggingApprover`.
 
 Done:
 - Evidence planner (LLM-driven, `investigation/planner.py`).
@@ -179,6 +180,12 @@ Done:
   Evidence payload is redacted before it leaves the collector. Steps that
   cannot be normalized (source fetch, deployments, repo search) still
   contribute their raw payload.
+- Notifications (`notifications/notifier.py`, `notifications/render.py`):
+  every `kind=communication` connector becomes a `ChannelNotifier` over a
+  Slack / Teams adapter (`integrations/slack`, `integrations/teams`), posting
+  a rendered investigation summary after each run and a review-request prompt
+  when a PR is blocked on approval; channel failures never abort the run and
+  the `LogNotifier` is always present.
 
 ## Test / lint
 

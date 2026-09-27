@@ -50,6 +50,12 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         "create_check_run": ["create_check_run", "submit_check", "start_check"],
         "get_check_run": ["get_check_run", "poll_check", "get_check"],
     },
+    "slack": {
+        "send_message": ["chat_postMessage", "chat_post_message", "post_message"],
+    },
+    "teams": {
+        "send_message": ["send_message", "post_message", "chat_postMessage"],
+    },
 }
 
 

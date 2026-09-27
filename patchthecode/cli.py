@@ -45,15 +45,12 @@ def _build_connectors(settings: Settings) -> dict:
 def _build_agent(settings: Settings) -> Agent:
     gateway = LLMGateway(settings.model_configs(), timeout_seconds=settings.llm_timeout_seconds)
     store = Store(settings.store_path)
-    notifiers = build_notifiers(
-        slack_webhook_url=settings.slack_webhook_url,
-        teams_webhook_url=settings.teams_webhook_url,
-    )
+    connectors = _build_connectors(settings)
     return Agent(
         gateway=gateway,
         store=store,
-        notifiers=notifiers,
-        connectors=_build_connectors(settings),
+        notifiers=build_notifiers(connectors),
+        connectors=connectors,
         auto_pr=settings.auto_pr,
     )
 

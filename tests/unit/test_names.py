@@ -7,6 +7,8 @@ from patchthecode.integrations.github import GitHubClient
 from patchthecode.integrations.gitlab import GitLabClient
 from patchthecode.integrations.names import TOOL_SPECS, align_tools, report_for, tool_spec
 from patchthecode.integrations.sentry import SentryClient
+from patchthecode.integrations.slack import SlackClient
+from patchthecode.integrations.teams import TeamsClient
 
 
 def test_align_picks_first_advertised_candidate():
@@ -68,6 +70,8 @@ def test_every_client_action_has_a_spec_entry():
         ("coralogix", CoralogixClient, ["query_logs", "list_deployments"]),
         ("appinsights", AppInsightsClient, ["query", "list_exceptions"]),
         ("ci", CIClient, ["create_check_run", "get_check_run"]),
+        ("slack", SlackClient, ["send_message"]),
+        ("teams", TeamsClient, ["send_message"]),
     ]
     for system, _client_type, actions in pairs:
         spec = TOOL_SPECS[system]
@@ -84,6 +88,18 @@ def test_factory_clients_resolve_their_own_system():
     assert adapter_for(_connection("srv", "observability", "appinsights"), mcp).system == "appinsights"
     assert adapter_for(_connection("srv", "observability", "coralogix"), mcp).system == "coralogix"
     assert adapter_for(_connection("srv", "ci"), mcp).system == "ci"
+    assert adapter_for(_connection("chat", "communication", "slack"), mcp).system == "slack"
+    assert adapter_for(_connection("chat", "communication", "teams"), mcp).system == "teams"
+
+
+def test_slack_alignment_uses_chat_post_message():
+    chosen = align_tools("slack", ["post_message", "chat_postMessage"], None)
+    assert chosen["send_message"] == "chat_postMessage"
+
+
+def test_teams_alignment_uses_send_message():
+    chosen = align_tools("teams", [], None)
+    assert chosen["send_message"] == "send_message"
 
 
 class _AdvertisedMCP:

@@ -6,6 +6,8 @@ from patchthecode.integrations.factory import adapter_for
 from patchthecode.integrations.github import GitHubClient
 from patchthecode.integrations.gitlab import GitLabClient
 from patchthecode.integrations.sentry import SentryClient
+from patchthecode.integrations.slack import SlackClient
+from patchthecode.integrations.teams import TeamsClient
 
 
 def _connection(name: str, kind: str, system: str | None = None) -> MCPConnection:
@@ -45,3 +47,13 @@ def test_adapter_for_returns_ci_client_for_validation_kind():
 def test_adapter_for_returns_raw_client_for_unknown_kinds():
     mcp = object()
     assert adapter_for(_connection("jira", "communication"), mcp) is mcp
+
+
+def test_adapter_for_routes_communication_by_system_hint():
+    mcp = object()
+    assert isinstance(adapter_for(_connection("chat", "communication", "slack"), mcp), SlackClient)
+    assert isinstance(adapter_for(_connection("chat", "communication", "teams"), mcp), TeamsClient)
+
+
+def test_adapter_for_infers_slack_from_name_when_system_missing():
+    assert isinstance(adapter_for(_connection("slack_ops", "communication"), object()), SlackClient)

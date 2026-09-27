@@ -47,9 +47,6 @@ class Settings(BaseSettings):
     mcp_config: Path | None = Field(default=None, alias="PATCHTHECODE_MCP_CONFIG")
     store_path: Path = Field(default=Path("data/patchthecode.db"), alias="PATCHTHECODE_STORE_PATH")
 
-    slack_webhook_url: str | None = Field(default=None, alias="PATCHTHECODE_SLACK_WEBHOOK_URL")
-    teams_webhook_url: str | None = Field(default=None, alias="PATCHTHECODE_TEAMS_WEBHOOK_URL")
-
     redact_fields: str = Field(
         default="Authorization,Cookie,password,secret,token,api_key",
         alias="PATCHTHECODE_REDACT_FIELDS",

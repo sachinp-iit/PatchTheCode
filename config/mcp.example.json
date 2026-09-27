@@ -14,5 +14,14 @@
     "command": "npx",
     "args": ["-y", "@modelcontextprotocol/server-github"],
     "env": {}
+  },
+  {
+    "name": "slack_mcp",
+    "kind": "communication",
+    "system": "slack",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@slack/mcp-server"],
+    "env": {}
   }
 ]

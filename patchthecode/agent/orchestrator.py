@@ -157,6 +157,7 @@ class Agent:
             },
         ):
             report.status = "pr_pending_approval"
+            await self._notify_review(report)
             return
         try:
             report.pull_request = await self.github.open_pull_request(self._build_pr_data(report))
@@ -200,6 +201,14 @@ class Agent:
     def ci_connector(self):
         """Return the CI-MCP connector, if any, for validation checks."""
         return self.ci
+
+    async def _notify_review(self, report: InvestigationReport) -> None:
+        """Ask every configured channel to surface the pending approval."""
+        for notifier in self.notifiers:
+            try:
+                await notifier.request_review(report)
+            except Exception:  # noqa: BLE001 - notifications never abort remediation
+                logger.exception("review request failed for %s", report.incident.id)
 
     @staticmethod
     def _pr_head_branch(report: InvestigationReport) -> str:

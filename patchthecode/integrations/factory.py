@@ -16,6 +16,8 @@ from patchthecode.integrations.coralogix import CoralogixClient
 from patchthecode.integrations.github import GitHubClient
 from patchthecode.integrations.gitlab import GitLabClient
 from patchthecode.integrations.sentry import SentryClient
+from patchthecode.integrations.slack import SlackClient
+from patchthecode.integrations.teams import TeamsClient
 from patchthecode.mcp.client import MCPClient
 
 
@@ -42,4 +44,10 @@ def adapter_for(connection: MCPConnection, mcp_client: MCPClient) -> Any:
         return CoralogixClient(mcp_client)
     if kind in {"ci", "validation"}:
         return CIClient(mcp_client)
+    if kind == "communication":
+        if "slack" in hint or "slack" in connection.name.lower():
+            return SlackClient(mcp_client)
+        if "teams" in hint or "teams" in connection.name.lower():
+            return TeamsClient(mcp_client)
+        return mcp_client  # no dedicated facade yet for this chat vendor
     return mcp_client  # no dedicated facade during the skeleton phase

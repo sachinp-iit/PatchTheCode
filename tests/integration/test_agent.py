@@ -7,7 +7,7 @@ from patchthecode.config import MCPConnection
 from patchthecode.domain import Severity
 from patchthecode.domain.models import Incident, IncidentSource
 from patchthecode.llm.gateway import LLMGateway
-from patchthecode.notifications.notifier import LogNotifier
+from patchthecode.notifications.notifier import LogNotifier, build_notifiers
 from patchthecode.storage.store import Store
 from patchthecode.validation.static import CommandResult, StaticValidator
 
@@ -197,6 +197,33 @@ async def test_agent_opens_merge_request_on_gitlab_connector(tmp_path):
 
     mr_args = next(arguments for name, arguments in gitlab_mcp.calls if name == "create_merge_request")
     assert mr_args["head"] == "patchthecode/mr:1"
+
+
+async def test_agent_requests_review_and_posts_summary_when_approval_blocked(tmp_path):
+    slack = _FakeMCP("slack_mcp", "communication", ["chat_postMessage"])
+    connectors = {
+        "coralogix_mcp": _FakeMCP("coralogix_mcp", "observability", ["query_logs"]),
+        "github_mcp": _FakeMCP(
+            "github_mcp",
+            "git",
+            ["get_file_contents", "create_branch", "create_commit", "create_pull_request"],
+        ),
+        "slack_mcp": slack,
+    }
+    store = Store(tmp_path / "test.db")
+    agent = Agent(
+        gateway=_ScriptedGateway(),
+        store=store,
+        notifiers=build_notifiers(connectors),
+        connectors=connectors,
+    )
+    report = await agent.handle(_incident(incident_id="review:1", fingerprint="fp-review"))
+    assert report.status == "pr_pending_approval"
+
+    posts = [arguments["text"] for name, arguments in slack.calls if name == "chat_postMessage"]
+    assert len(posts) == 2
+    assert any("Please review" in text for text in posts)
+    assert any("fp-review" in text for text in posts)
 
 
 async def test_agent_fix_unavailable_without_git_connector(tmp_path):
