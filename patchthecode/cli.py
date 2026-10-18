@@ -8,7 +8,8 @@ Currently supports:
   - `demo`: run the pipeline against a synthetic incident (no MCP servers).
   - `poll-prs`: record merged/closed outcomes for open pull requests.
   - `watch`: keep running, pick up incident JSON files from an inbox
-    directory, and investigate each one without a CLI call per incident.
+    directory (and optionally accept pushed incidents over HTTP
+    `POST /incidents`), and investigate each one without a CLI call.
   - `list-prs`: show the open pull requests awaiting review.
   - `rejections`: show fixes reviewers rejected (the learning queue).
   - `status`: operating totals from the store.
@@ -28,8 +29,9 @@ from rich.console import Console
 from rich.pretty import pprint
 
 from patchthecode.agent.orchestrator import Agent
-from patchthecode.agent.sources import FileInbox
+from patchthecode.agent.sources import CompositeFeed, FileInbox, IncidentFeed, QueueFeed
 from patchthecode.agent.watch import WatchLoop
+from patchthecode.agent.webhook import IncidentWebhook
 from patchthecode.config import Settings
 from patchthecode.domain import Severity
 from patchthecode.domain.models import Incident, IncidentSource, InvestigationReport
@@ -209,6 +211,13 @@ def watch(
     no_pr_poll: Annotated[
         bool, typer.Option("--no-pr-poll", help="Do not refresh pull-request outcomes each cycle")
     ] = False,
+    webhook_port: Annotated[
+        int | None,
+        typer.Option(
+            "--webhook-port",
+            help="Also accept pushed incidents via HTTP POST /incidents on this port (0 = random)",
+        ),
+    ] = None,
 ) -> None:
     """Watch an incident inbox and investigate new incidents automatically."""
     settings = _settings()
@@ -216,7 +225,10 @@ def watch(
     interval_seconds = interval if interval is not None else settings.watch_interval_seconds
     max_cycles = 1 if once else cycles
     agent = _build_agent(settings)
-    feed = FileInbox(inbox_dir)
+    inbox_feed = FileInbox(inbox_dir)
+    queue = QueueFeed()
+    webhook = IncidentWebhook(queue, port=webhook_port) if webhook_port is not None else None
+    feed: IncidentFeed = CompositeFeed([inbox_feed, queue]) if webhook is not None else inbox_feed
     console.print(
         f"[cyan]Watching {inbox_dir} every {interval_seconds}s"
         + (" (single cycle)" if max_cycles == 1 else "")
@@ -240,8 +252,19 @@ def watch(
         on_cycle=_on_cycle,
         on_report=_on_report,
     )
+
+    async def _run() -> list[InvestigationReport]:
+        if webhook is not None:
+            port = await webhook.start()
+            console.print(f"[cyan]Webhook: POST http://{webhook.host}:{port}/incidents[/cyan]")
+        try:
+            return await loop.run()
+        finally:
+            if webhook is not None:
+                await webhook.stop()
+
     try:
-        reports = asyncio.run(loop.run())
+        reports = asyncio.run(_run())
     except KeyboardInterrupt:  # pragma: no cover - interactive stop
         console.print("[yellow]Watch stopped.[/yellow]")
         return

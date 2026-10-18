@@ -172,3 +172,21 @@ def test_watch_reports_empty_inbox(monkeypatch, tmp_path, capsys):
 
     watch(inbox=inbox, interval=0, once=True, cycles=None, no_pr_poll=True)
     assert "No new incidents found" in capsys.readouterr().out
+
+
+def test_watch_starts_webhook_when_port_requested(monkeypatch, tmp_path, capsys):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    monkeypatch.setattr("patchthecode.cli._build_agent", lambda settings: _WatchStubAgent())
+
+    watch(
+        inbox=inbox,
+        interval=0,
+        once=True,
+        cycles=None,
+        no_pr_poll=True,
+        webhook_port=0,
+    )
+    out = capsys.readouterr().out
+    assert "Webhook: POST http://127.0.0.1:" in out
+    assert "No new incidents found" in out

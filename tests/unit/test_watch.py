@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from patchthecode.agent.sources import FileInbox
+from patchthecode.agent.sources import CompositeFeed, FileInbox, QueueFeed
 from patchthecode.agent.watch import WatchLoop
 from patchthecode.domain import Severity
 from patchthecode.domain.models import (
@@ -158,3 +158,50 @@ async def test_watch_loop_sleeps_between_cycles_only(tmp_path):
     assert cycles == [1, 2, 3]
     assert slept == [7, 7]
     assert reports == []
+
+
+async def test_queue_feed_drains_on_fetch():
+    queue = QueueFeed()
+    incident = _incident("q:1")
+    assert queue.push(incident) == 1
+
+    fetched = await queue.fetch()
+    assert [i.id for i in fetched] == ["q:1"]
+    await queue.acknowledge(incident)  # already consumed by fetch; must not raise
+    assert await queue.fetch() == []
+
+
+async def test_composite_feed_aggregates_and_routes_acks(tmp_path):
+    inbox = FileInbox(tmp_path / "inbox")
+    inbox.directory.mkdir(parents=True)
+    _write(inbox.directory / "a.json", _incident("a:1"))
+    queue = QueueFeed()
+    queue.push(_incident("q:2"))
+
+    composite = CompositeFeed([inbox, queue])
+    fetched = await composite.fetch()
+    assert [i.id for i in fetched] == ["a:1", "q:2"]
+
+    await composite.acknowledge(fetched[0])
+    assert (inbox.processed_dir / "a.json").exists()
+
+    # acking something unknown is a no-op, not an error
+    await composite.acknowledge(_incident("ghost:1"))
+    assert await composite.fetch() == []
+
+
+async def test_composite_feed_survives_one_broken_feed(tmp_path):
+    class _BrokenFeed:
+        async def fetch(self) -> list[Incident]:
+            raise RuntimeError("down")
+
+        async def acknowledge(self, incident: Incident) -> None:
+            return None
+
+    inbox = FileInbox(tmp_path / "inbox")
+    inbox.directory.mkdir(parents=True)
+    _write(inbox.directory / "a.json", _incident("a:1"))
+
+    composite = CompositeFeed([_BrokenFeed(), inbox])
+    fetched = await composite.fetch()
+    assert [i.id for i in fetched] == ["a:1"]

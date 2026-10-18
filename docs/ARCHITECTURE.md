@@ -144,8 +144,9 @@ prompts. Do not bypass this path.
 1. **Live alignment tuning**: run `inspect-mcp --dump-to data/inspect` against
    real Coralogix / Sentry / App Insights credentials and tighten `TOOL_SPECS`
    candidates where servers advertise extra variants.
-2. **More incident feeds**: a webhook receiver and Sentry/Coralogix issue
-   polling so alerting systems push into the watch loop directly.
+2. **MCP issue feed**: pull new issues from Sentry/Coralogix through the
+   adapters as another `IncidentFeed`, so nothing needs a file drop or a
+   webhook either.
 
 Done:
 - Evidence planner (LLM-driven, `investigation/planner.py`).
@@ -218,6 +219,16 @@ Done:
   a failing incident, or a failing PR poll. `patchthecode watch
   [--inbox/--interval/--once/--cycles/--no-pr-poll]` exposes it, configured by
   `PATCHTHECODE_WATCH_INBOX` and `PATCHTHECODE_WATCH_INTERVAL_SECONDS`.
+- Push ingestion (`detection/webhook.py`, `agent/webhook.py`, `QueueFeed`,
+  `CompositeFeed`, `watch --webhook-port`): `incident_from_payload` accepts
+  either a full `Incident` or a minimal alert envelope (`title` + optional
+  service/severity/message/stack) and normalizes/fingerprints it through the
+  same detection path as live occurrences, so pushed alerts dedupe and learn
+  like everything else. `IncidentWebhook` is a dependency-free HTTP/1.1 server
+  (`POST /incidents` → 202 queued; 400/404/405/413 for bad input, 1 MiB cap)
+  feeding a `QueueFeed`; `CompositeFeed` fans the file inbox and the webhook
+  queue together, routing each ack back to its origin and isolating a broken
+  feed.
 - Operator surfaces (`cli.py`, `store.summary`): `list-prs` shows the review
   queue, `rejections` shows the learning queue (fingerprint / incident /
   summary), and `status` prints operating totals — incidents, investigations,

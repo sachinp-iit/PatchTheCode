@@ -72,3 +72,56 @@ class FileInbox:
         if not self.directory.is_dir():
             return []
         return sorted(p for p in self.directory.glob("*.json") if p.is_file())
+
+
+class QueueFeed:
+    """In-memory incident feed for pushed alerts (webhooks).
+
+    `fetch` drains the queue, so an acknowledged incident is just a no-op;
+    re-delivery is still deduplicated by the store if a cycle crashes before
+    the investigation is saved.
+    """
+
+    def __init__(self) -> None:
+        self._queue: list[Incident] = []
+
+    def push(self, incident: Incident) -> int:
+        """Queue an incident; returns how many are waiting."""
+        self._queue.append(incident)
+        return len(self._queue)
+
+    async def fetch(self) -> list[Incident]:
+        pending, self._queue = self._queue, []
+        return pending
+
+    async def acknowledge(self, incident: Incident) -> None:
+        return None  # fetch already removed it
+
+
+class CompositeFeed:
+    """Fan in multiple feeds, routing each incident's ack back to its origin.
+
+    A failing feed does not hide incidents from the healthy ones.
+    """
+
+    def __init__(self, feeds: list[IncidentFeed]) -> None:
+        self._feeds = list(feeds)
+        self._owners: dict[str, IncidentFeed] = {}
+
+    async def fetch(self) -> list[Incident]:
+        incidents: list[Incident] = []
+        for feed in self._feeds:
+            try:
+                fetched = await feed.fetch()
+            except Exception:  # noqa: BLE001 - one broken feed must not starve the loop
+                logger.exception("incident feed failed to list incidents")
+                continue
+            for incident in fetched:
+                self._owners[incident.id] = feed
+                incidents.append(incident)
+        return incidents
+
+    async def acknowledge(self, incident: Incident) -> None:
+        feed = self._owners.pop(incident.id, None)
+        if feed is not None:
+            await feed.acknowledge(incident)

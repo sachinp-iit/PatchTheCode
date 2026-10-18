@@ -468,6 +468,21 @@ refreshes open pull-request outcomes, and moves finished payloads to
 `data/inbox/processed/`. A malformed file is retried on the next poll, and one
 failing incident never stops the loop.
 
+Alerting systems can also push instead of drop files:
+
+```bash
+patchthecode watch --webhook-port 8765
+curl -X POST http://127.0.0.1:8765/incidents \
+  -H 'Content-Type: application/json' \
+  -d '{"title": "NullPointerException in PaymentService.processPayment", "service": "payments-api", "severity": "critical"}'
+```
+
+The webhook accepts a full `Incident` payload or a minimal alert envelope
+(`title` plus optional `service`, `severity`, `message`, `stack_trace`,
+`occurrences`, `first_seen`/`last_seen`); envelopes are normalized and
+fingerprinted through the same detection path as live occurrences, so
+duplicate alerts dedupe and repeat problems hit the learning loop.
+
 ---
 
 ## Repository Structure
