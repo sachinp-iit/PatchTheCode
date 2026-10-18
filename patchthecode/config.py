@@ -62,6 +62,11 @@ class Settings(BaseSettings):
         alias="PATCHTHECODE_REDACT_FIELDS",
     )
 
+    lint_command: str = Field(default="", alias="PATCHTHECODE_LINT_COMMAND")
+    typecheck_command: str = Field(default="", alias="PATCHTHECODE_TYPECHECK_COMMAND")
+    test_command: str = Field(default="", alias="PATCHTHECODE_TEST_COMMAND")
+    conventions: str = Field(default="", alias="PATCHTHECODE_CONVENTIONS")
+
     def model_configs(self) -> list[ModelConfig]:
         configs = [
             ModelConfig(task="investigation", model=self.model_investigation or self.model_default),

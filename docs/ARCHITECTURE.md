@@ -141,10 +141,12 @@ prompts. Do not bypass this path.
 
 ## Where to build next (priority)
 
-1. **LLM policy tweaks**: add prompt/config knobs for repository- and
-   organization-specific style (gates, test commands, conventions).
-
 Done:
+- LLM policy tweaks: per-repo/org style knobs (`PATCHTHECODE_LINT_COMMAND`,
+  `PATCHTHECODE_TYPECHECK_COMMAND`, `PATCHTHECODE_TEST_COMMAND`,
+  `PATCHTHECODE_CONVENTIONS`) feed `StaticValidator.from_settings` and the fix
+  prompt, so validation and codegen respect repository-specific gates and
+  conventions.
 - Live alignment tuning: `inspect-mcp --dump-to <dir>` writes one JSON alignment
   report per connector to `data/inspect/` (ignored in VCS), enabling tightening
   of `TOOL_SPECS` candidates against real servers.

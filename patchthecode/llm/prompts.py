@@ -107,6 +107,7 @@ def generate_fix_prompt(
     code_snippet: str,
     root_cause: str,
     rejections: list[dict[str, Any]] | None = None,
+    conventions: str | None = None,
 ) -> list[dict[str, str]]:
     """Produce a candidate diff for a located root cause.
 
@@ -120,6 +121,11 @@ def generate_fix_prompt(
         f"ROOT CAUSE:\n{root_cause}\n\n"
         f"CURRENT CODE:\n```\n{code_snippet}\n```\n\n"
     )
+    if conventions:
+        user += (
+            "PROJECT CONVENTIONS (follow these for the fix):\n"
+            f"{conventions}\n\n"
+        )
     if rejections:
         attempts = "\n".join(
             f"- reason: {rejected.get('reason', 'closed without merge')}\n"

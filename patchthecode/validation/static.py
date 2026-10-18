@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from patchthecode.config import Settings
 from patchthecode.domain.models import FixProposal
 from patchthecode.remediation.patch import PatchError, apply_unified_diff, diff_for_file
 
@@ -59,6 +60,16 @@ class StaticValidator:
         self.commands = default_commands() if commands is None else commands
         self.executor = executor or self._default_executor
         self._trusted_executor = executor is not None
+
+    @classmethod
+    def from_settings(cls, settings: Settings, executor: Executor | None = None) -> StaticValidator:
+        commands = default_commands()
+        if settings.lint_command:
+            for ext in [".py", ".js", ".ts", ".tsx", ".go"]:
+                commands[ext] = settings.lint_command.split()
+        if settings.typecheck_command:
+            commands[".py"] = settings.typecheck_command.split()
+        return cls(commands=commands, executor=executor)
 
     @staticmethod
     async def _default_executor(command: list[str], cwd: Path) -> CommandResult:

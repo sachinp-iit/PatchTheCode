@@ -486,6 +486,17 @@ duplicate alerts dedupe and repeat problems hit the learning loop.
 
 ---
 
+## LLM policy tweaks
+
+Set these to steer codegen/validation for your repo and org conventions:
+
+- `PATCHTHECODE_LINT_COMMAND` - e.g. `ruff check {file}`
+- `PATCHTHECODE_TYPECHECK_COMMAND` - e.g. `mypy {file}`
+- `PATCHTHECODE_TEST_COMMAND` - e.g. `pytest -q`
+- `PATCHTHECODE_CONVENTIONS` - free-form notes injected into the fix prompt
+
+These override the built-in per-language defaults in `StaticValidator` and bias the fix generator toward your gates.
+
 ## Repository Structure
 
 The project is organized around the production debugging workflow:

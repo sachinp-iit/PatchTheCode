@@ -22,8 +22,9 @@ MODEL_UNAVAILABLE = "Fix generation failed (model unavailable or invalid respons
 class FixGenerator:
     """Generate a candidate fix from root cause + code context."""
 
-    def __init__(self, gateway: LLMGateway) -> None:
+    def __init__(self, gateway: LLMGateway, conventions: str | None = None) -> None:
         self.gateway = gateway
+        self.conventions = conventions or None
 
     async def propose(
         self,
@@ -47,6 +48,7 @@ class FixGenerator:
             code_snippet,
             root_cause.hypothesis,
             rejections=rejected_fixes,
+            conventions=self.conventions,
         )
         try:
             data = await self.gateway.complete_json("codegen", messages)

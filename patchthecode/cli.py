@@ -68,6 +68,7 @@ def _build_agent(settings: Settings) -> Agent:
         connectors=connectors,
         auto_pr=settings.auto_pr,
         approver=_channel_approver(settings, connectors),
+        settings=settings,
     )
 
 

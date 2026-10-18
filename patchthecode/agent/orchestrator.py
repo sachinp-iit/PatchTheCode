@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import cast
 
-from patchthecode.config import MCPConnection
+from patchthecode.config import MCPConnection, Settings
 from patchthecode.domain.models import InvestigationReport, PullRequestData
 from patchthecode.integrations.factory import adapter_for
 from patchthecode.integrations.github import GitHubClient
@@ -42,14 +42,17 @@ class Agent:
         auto_pr: bool = False,
         approver: Approver | None = None,
         static_validator: StaticValidator | None = None,
+        settings: Settings | None = None,
     ) -> None:
         self.gateway = gateway
         self.store = store
         self.notifiers = notifiers
         self.connectors = connectors or {}
+        if static_validator is None and settings is not None:
+            static_validator = StaticValidator.from_settings(settings)
         self.evidence_collector = EvidenceCollector(planner=InvestigationPlanner(gateway=gateway))
         self.analyzer = RootCauseAnalyzer(gateway=gateway)
-        self.fixer = FixGenerator(gateway=gateway)
+        self.fixer = FixGenerator(gateway=gateway, conventions=settings.conventions if settings else None)
         self.validation = ValidationRunner(static=static_validator)
         self.checkout_builder = CheckoutBuilder()
         self.github = self._find_git_connector()
