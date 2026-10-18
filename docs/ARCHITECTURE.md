@@ -141,13 +141,13 @@ prompts. Do not bypass this path.
 
 ## Where to build next (priority)
 
-1. **Live alignment tuning**: run `inspect-mcp --dump-to data/inspect` against
-   real Coralogix / Sentry / App Insights credentials and tighten `TOOL_SPECS`
-   candidates where servers advertise extra variants.
 1. **LLM policy tweaks**: add prompt/config knobs for repository- and
    organization-specific style (gates, test commands, conventions).
 
 Done:
+- Live alignment tuning: `inspect-mcp --dump-to <dir>` writes one JSON alignment
+  report per connector to `data/inspect/` (ignored in VCS), enabling tightening
+  of `TOOL_SPECS` candidates against real servers.
 - MCP issue feed: `patchthecode/agent/issues.py` wraps any observability
   facade's `execute(action, arguments)` as an `IncidentFeed` (Sentry
   `search_issues`, Coralogix `query_logs`, App Insights `list_exceptions` by
