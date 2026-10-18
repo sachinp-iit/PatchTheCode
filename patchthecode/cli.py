@@ -28,6 +28,7 @@ import typer
 from rich.console import Console
 from rich.pretty import pprint
 
+from patchthecode.agent.issues import McpIssueFeed, default_action_for
 from patchthecode.agent.orchestrator import Agent
 from patchthecode.agent.sources import CompositeFeed, FileInbox, IncidentFeed, QueueFeed
 from patchthecode.agent.watch import WatchLoop
@@ -68,6 +69,43 @@ def _build_agent(settings: Settings) -> Agent:
         auto_pr=settings.auto_pr,
         approver=_channel_approver(settings, connectors),
     )
+
+
+def _issues_feed(settings: Settings, connectors: dict) -> IncidentFeed | None:
+    """Wrap an observability connector's facade as an issue feed, if configured."""
+    name = settings.issues_connector
+    if not name:
+        return None
+    client = connectors.get(name)
+    if client is None:
+        console.print(f"[yellow]No connector named {name!r}; --issues feed disabled.[/yellow]")
+        return None
+    connection = getattr(client, "connection", None)
+    if connection is None:
+        console.print(f"[yellow]No connection on {name!r}; --issues feed disabled.[/yellow]")
+        return None
+    try:
+        facade = adapter_for(connection, client)
+    except Exception:  # noqa: BLE001 - a misconfigured connector just gets no feed
+        console.print(f"[yellow]Could not build an adapter for {name!r}; --issues feed disabled.[/yellow]")
+        return None
+    action = settings.issues_action or None
+    arguments: dict = {}
+    if action in (None, "query_logs"):
+        from datetime import datetime, timedelta
+
+        now = datetime.utcnow()
+        arguments.setdefault(
+            "time_range",
+            {"from": (now - timedelta(hours=1)).isoformat(), "to": now.isoformat()},
+        )
+    if settings.issues_query:
+        arguments.setdefault("query", settings.issues_query)
+    console.print(
+        f"[cyan]Issues feed: {name} ({getattr(facade, 'system', '?')}"
+        f"/{action or default_action_for(facade)}) query={settings.issues_query!r}[/cyan]"
+    )
+    return McpIssueFeed(facade, action=action, arguments=arguments)
 
 
 def _channel_approver(settings: Settings, connectors: dict):
@@ -218,9 +256,24 @@ def watch(
             help="Also accept pushed incidents via HTTP POST /incidents on this port (0 = random)",
         ),
     ] = None,
+    issues: Annotated[
+        str | None,
+        typer.Option(
+            "--issues",
+            help="Observability connector name to poll for new issues (e.g. sentry_mcp)",
+        ),
+    ] = None,
+    issues_query: Annotated[
+        str | None,
+        typer.Option("--issues-query", help="Query/filter for the issues feed (default is:unresolved)"),
+    ] = None,
 ) -> None:
     """Watch an incident inbox and investigate new incidents automatically."""
     settings = _settings()
+    if issues is not None:
+        settings.issues_connector = issues
+    if issues_query is not None:
+        settings.issues_query = issues_query
     inbox_dir = inbox or settings.watch_inbox
     interval_seconds = interval if interval is not None else settings.watch_interval_seconds
     max_cycles = 1 if once else cycles
@@ -228,7 +281,13 @@ def watch(
     inbox_feed = FileInbox(inbox_dir)
     queue = QueueFeed()
     webhook = IncidentWebhook(queue, port=webhook_port) if webhook_port is not None else None
-    feed: IncidentFeed = CompositeFeed([inbox_feed, queue]) if webhook is not None else inbox_feed
+    issue_feed = _issues_feed(settings, getattr(agent, "connectors", {}) or {})
+    feeds: list[IncidentFeed] = [inbox_feed]
+    if webhook is not None:
+        feeds.append(queue)
+    if issue_feed is not None:
+        feeds.append(issue_feed)
+    feed: IncidentFeed = CompositeFeed(feeds) if len(feeds) > 1 else inbox_feed
     console.print(
         f"[cyan]Watching {inbox_dir} every {interval_seconds}s"
         + (" (single cycle)" if max_cycles == 1 else "")

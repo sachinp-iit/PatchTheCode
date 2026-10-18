@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     watch_inbox: Path = Field(default=Path("data/inbox"), alias="PATCHTHECODE_WATCH_INBOX")
     watch_interval_seconds: int = Field(default=30, alias="PATCHTHECODE_WATCH_INTERVAL_SECONDS")
 
+    issues_connector: str = Field(default="", alias="PATCHTHECODE_ISSUES_CONNECTOR")
+    issues_query: str = Field(default="is:unresolved", alias="PATCHTHECODE_ISSUES_QUERY")
+    issues_action: str = Field(default="", alias="PATCHTHECODE_ISSUES_ACTION")
+
     redact_fields: str = Field(
         default="Authorization,Cookie,password,secret,token,api_key",
         alias="PATCHTHECODE_REDACT_FIELDS",

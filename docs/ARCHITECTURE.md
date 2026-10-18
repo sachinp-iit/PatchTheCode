@@ -144,11 +144,17 @@ prompts. Do not bypass this path.
 1. **Live alignment tuning**: run `inspect-mcp --dump-to data/inspect` against
    real Coralogix / Sentry / App Insights credentials and tighten `TOOL_SPECS`
    candidates where servers advertise extra variants.
-2. **MCP issue feed**: pull new issues from Sentry/Coralogix through the
-   adapters as another `IncidentFeed`, so nothing needs a file drop or a
-   webhook either.
+1. **LLM policy tweaks**: add prompt/config knobs for repository- and
+   organization-specific style (gates, test commands, conventions).
 
 Done:
+- MCP issue feed: `patchthecode/agent/issues.py` wraps any observability
+  facade's `execute(action, arguments)` as an `IncidentFeed` (Sentry
+  `search_issues`, Coralogix `query_logs`, App Insights `list_exceptions` by
+  default). Watch mode can poll it via `watch --issues <connector> [--issues-query ...]` or `PATCHTHECODE_ISSUES_CONNECTOR`. Each poll fingerprints hits and
+  yields new incidents (deduped by an ack-tracking set); re-encountered
+  issues still dedupe through the store, and all incidents flow through the
+  same normalization/learning.
 - Evidence planner (LLM-driven, `investigation/planner.py`).
 - Root-cause + fix flow (`analyzer.py`, `remediation/fixer.py`).
 - Git write path (`remediation/patch.py` + `open_pull_request`) behind the

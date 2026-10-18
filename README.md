@@ -459,6 +459,7 @@ pytest                      # unit + integration tests
 patchthecode demo           # run the pipeline on a synthetic incident
 patchthecode watch --once    # investigate everything waiting in the inbox
 patchthecode watch           # keep watching (Ctrl-C to stop)
+patchthecode watch --issues sentry_mcp --issues-query 'is:unresolved'  # poll Sentry issues via MCP feed
 ```
 
 In watch mode, drop incident JSON files (the same `Incident` payload `replay`
