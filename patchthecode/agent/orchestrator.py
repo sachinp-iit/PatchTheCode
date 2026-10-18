@@ -53,7 +53,10 @@ class Agent:
         self.evidence_collector = EvidenceCollector(planner=InvestigationPlanner(gateway=gateway))
         self.analyzer = RootCauseAnalyzer(gateway=gateway)
         self.fixer = FixGenerator(gateway=gateway, conventions=settings.conventions if settings else None)
-        self.validation = ValidationRunner(static=static_validator)
+        self.validation = ValidationRunner(
+            static=static_validator,
+            test_command=settings.test_command if settings else None,
+        )
         self.checkout_builder = CheckoutBuilder()
         self.github = self._find_git_connector()
         self.ci = self._find_ci_connector()

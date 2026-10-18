@@ -25,8 +25,9 @@ class ValidationRunner:
         - local test commands for the language detected in the repo
     """
 
-    def __init__(self, static: StaticValidator | None = None) -> None:
+    def __init__(self, static: StaticValidator | None = None, test_command: str | None = None) -> None:
         self.static = static
+        self.test_command = test_command or None
 
     async def validate(
         self,
@@ -42,6 +43,13 @@ class ValidationRunner:
             except Exception:  # noqa: BLE001 - a broken adapter must not abort validation
                 logger.exception("static validation failed for %s", fix.location.file_path or "?")
                 checks.append({"name": "static", "status": "failed", "reason": "adapter crashed"})
+
+        if self.test_command and checkout is not None:
+            try:
+                checks.append(await self._run_test_command(checkout))
+            except Exception:  # noqa: BLE001 - a broken test command must not abort validation
+                logger.exception("test command failed for %s", fix.location.file_path or "?")
+                checks.append({"name": "test", "status": "failed", "reason": "test command crashed"})
 
         if ci_client is not None:
             try:
@@ -71,3 +79,23 @@ class ValidationRunner:
         # Stronger when adapters are configured: every check must actually pass.
         passed = all(c.get("status") == "passed" for c in checks)
         return ValidationResult(passed=passed, checks=checks)
+
+    async def _run_test_command(self, checkout: Any) -> dict[str, Any]:
+        """Run the configured test command in the checkout and record a check row."""
+        import asyncio
+
+        command = self.test_command.split()
+        proc = await asyncio.create_subprocess_exec(
+            *command,
+            cwd=str(checkout),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        stdout, _ = await proc.communicate()
+        tail = (stdout or b"").decode()[-500:]
+        return {
+            "name": "test",
+            "command": self.test_command,
+            "status": "passed" if proc.returncode == 0 else "failed",
+            "output": tail,
+        }

@@ -142,6 +142,9 @@ prompts. Do not bypass this path.
 ## Where to build next (priority)
 
 Done:
+- Test command wiring: `PATCHTHECODE_TEST_COMMAND` runs a local test command in
+  the checkout as part of `ValidationRunner.validate`, recording a `test` check
+  row that gates the fix (alongside static lint and CI).
 - LLM policy tweaks: per-repo/org style knobs (`PATCHTHECODE_LINT_COMMAND`,
   `PATCHTHECODE_TYPECHECK_COMMAND`, `PATCHTHECODE_TEST_COMMAND`,
   `PATCHTHECODE_CONVENTIONS`) feed `StaticValidator.from_settings` and the fix
